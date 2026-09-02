@@ -1,6 +1,7 @@
 # Architecture
 
-One backbone, many cheap heads, and a controller that is allowed to say no.
+Three backbones with disjoint competences, many cheap heads, and a controller
+that picks between them per query and is allowed to say no.
 
 ```
 query ─┐
@@ -56,11 +57,39 @@ every downstream number meaningless. See [ADR 0002](adr/0002-remote-sensing-back
 | `controller/agent.py` | the statement's six enumerated steps, in order |
 | `tools/base.py` | `ToolSpec`, the `Tool` contract, `Registry` |
 | `tools/backbone.py` | the adapted CLIP; embeddings and dense patch tokens |
-| `tools/specialists.py` | VQA, captioning, grounding |
+| `tools/specialists.py` | land-cover VQA, captioning, patch-token grounding |
+| `tools/detector.py` | open-vocabulary detection, referring resolution |
+| `tools/generative.py` | free-form VQA, captioning and grounded boxes |
 | `tools/multi_image.py` | change detection, optical–SAR analysis |
 | `adapt/` | BigEarthNet pair preparation, conversion, fine-tuning |
 | `server.py` / `web/` | HTTP API and the interactive application |
 | `report.py` | self-contained downloadable reports |
+
+## Why three backbones
+
+They fail in different directions, and each was added because a measurement
+said the previous set could not reach something.
+
+**CLIP over a class vocabulary** ranks land cover well and is well calibrated on
+the vocabulary it was adapted to. It has no notion of an instance, so it cannot
+count, locate, or compare two objects — and it can only ever emit a word from
+its vocabulary, which caps VRSBench VQA at 65.5% before perception is
+considered.
+
+**The detector** supplies instances: boxes, counts, positions and sizes. It took
+referring grounding from 0.2% to 25.1% and made counting possible at all. It has
+no notion of land cover, so "highlight the water body" goes elsewhere.
+
+**The generative model** removes the vocabulary ceiling and is the only
+component that can write a caption: references average 48 words against a
+five-class template. It is the least calibrated of the three, which is why
+confidence is capped when its adapter is absent.
+
+The controller chooses between them from the query, not the task, because two
+tools may serve the same task and answer disjoint question sets. Selection is
+by name rather than by taking the first candidate — the registry sorts
+alphabetically, and relying on that position once sent every scene-level
+question to the detector.
 
 ## Grounding without box supervision
 
