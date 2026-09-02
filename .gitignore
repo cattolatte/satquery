@@ -1,0 +1,29 @@
+.DS_Store
+*.log
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# node
+node_modules/
+dist/
+build/
+
+# data and model artefacts (large, re-downloadable, or generated)
+data/
+checkpoints/
+*.pt
+*.safetensors
+*.onnx
+*.tif
+*.tiff
+runs/
+.cache/
+
+# env
+.env
+.env.*
