@@ -61,3 +61,32 @@ curl -X POST http://127.0.0.1:8077/api/query \
   -F "q=Highlight the water body referred to in the query." \
   -F "images=@path/to/scene.tif"
 ```
+
+## Fetching the benchmarks
+
+CDVQA and RSVQA-LR are already reproducible from small downloads. VRSBench VQA
+and captioning need a 4 GB image archive that HuggingFace serves slowly to
+unauthenticated clients — it stalls repeatedly on a weak connection.
+
+Two things make it reliable:
+
+**Use `curl -C -`, not the HuggingFace client.** The client hangs on a dropped
+connection without raising, so its retry loop never fires. `curl` resumes from
+the byte it stopped at, and rerunning the loop below picks up each time.
+
+```bash
+bash scripts/fetch_vrsbench.sh
+```
+
+**Set an `HF_TOKEN` if you have one.** HuggingFace throttles unauthenticated
+transfers, which is the underlying cause. A free read token removes the cap.
+
+```bash
+export HF_TOKEN=hf_yourtoken
+```
+
+Once `data/bench/vrsbench/Images_val.zip` is extracted:
+
+```bash
+PYTHONPATH=. python3 eval/vrsbench_grounding.py --tiles 5 --min-area 1 --threshold 0.75
+```

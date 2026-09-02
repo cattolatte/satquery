@@ -1,0 +1,28 @@
+{
+ "benchmark": "BigEarthNet co-registered S1/S2",
+ "n": 600,
+ "k": 3,
+ "by_reading": {
+  "optical": {
+   "precision_at_k": 0.345,
+   "recall_at_k": 0.6258333333333334
+  },
+  "sar": {
+   "precision_at_k": 0.3616666666666667,
+   "recall_at_k": 0.663
+  },
+  "mean": {
+   "precision_at_k": 0.35722222222222216,
+   "recall_at_k": 0.6552222222222223
+  },
+  "max": {
+   "precision_at_k": 0.37555555555555553,
+   "recall_at_k": 0.6825833333333333
+  },
+  "weighted": {
+   "precision_at_k": 0.35888888888888887,
+   "recall_at_k": 0.6556388888888889
+  }
+ },
+ "fusion_gain": 0.01388888888888884
+}

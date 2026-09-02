@@ -35,7 +35,9 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import CLIPModel, CLIPProcessor
 
 from satquery.adapt.convert_openclip import load_openclip_as_hf
-from satquery.tools.backbone import ARCHITECTURE, DEFAULT_BASE, DEFAULT_CKPT, _vec
+from satquery.tools.backbone import (
+    ADAPTED_DIR, ARCHITECTURE, DEFAULT_BASE, DEFAULT_CKPT, _vec,
+)
 from satquery.tools.specialists import LAND_COVER
 
 OUT = Path("checkpoints/rs_clip")
@@ -49,6 +51,11 @@ def load_base(name: str, device: str):
     while BigEarthNet is 120x120 Sentinel-2 at 10 m/px. See docs/adr/0002.
     """
     from huggingface_hub import hf_hub_download
+    if name == "adapted":
+        # Continue from our own optical adaptation rather than restarting from
+        # the base: the optical half is already trained, and the point of this
+        # pass is to bring SAR into the same space without discarding it.
+        return CLIPModel.from_pretrained(str(ADAPTED_DIR)).to(device), "adapted (optical)"
     if name == "openai":
         return CLIPModel.from_pretrained(ARCHITECTURE).to(device), "OpenAI CLIP"
     ckpt = hf_hub_download(DEFAULT_BASE, DEFAULT_CKPT)
@@ -156,7 +163,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", default="data/adapt/train.jsonl")
     ap.add_argument("--test", default="data/adapt/test.jsonl")
-    ap.add_argument("--base", default="remoteclip", choices=["remoteclip", "openai"])
+    ap.add_argument("--base", default="remoteclip",
+                    choices=["remoteclip", "openai", "adapted"])
     ap.add_argument("--epochs", type=int, default=6)
     ap.add_argument("--batch", type=int, default=24)
     ap.add_argument("--lr", type=float, default=1e-5)

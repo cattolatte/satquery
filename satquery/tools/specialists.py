@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-from ..schema import Evidence, ImageMeta, Task
+from ..schema import Evidence, ImageMeta, Modality, Task
 from .backbone import Backbone, embed_images, embed_texts, load, patch_tokens
 from .base import Tool, ToolSpec
 
@@ -34,31 +34,94 @@ LAND_COVER = [
 ]
 
 
-def _open(meta: ImageMeta):
-    """Load an image as RGB for the backbone.
+def _stretch(channel: np.ndarray) -> np.ndarray:
+    """Percentile stretch one channel to [0, 1].
 
-    Sentinel-2 GeoTIFFs carry 12-13 bands; CLIP wants three. Bands 4/3/2 are
-    red/green/blue in Sentinel-2 order, so the natural-colour composite is the
-    right default — it is also what the text descriptions were written against.
+    Per channel, not over the stack. Satellite reflectance has a long tail, and
+    for SAR the polarisation channels differ in dynamic range by enough that a
+    shared stretch flattens one of them into noise.
+    """
+    channel = np.asarray(channel, dtype=np.float32)
+    mask = np.isfinite(channel)
+    if not mask.any():
+        return np.zeros_like(channel, dtype=np.float32)
+    lo, hi = np.percentile(channel[mask], [2, 98])
+    # Non-finite pixels (SAR no-data, division artefacts) are floored rather
+    # than propagated: a single NaN would otherwise poison the whole embedding.
+    out = np.where(mask, channel, lo)
+    return np.clip((out - lo) / max(hi - lo, 1e-6), 0, 1)
+
+
+def _sar_composite(bands: list[np.ndarray]) -> np.ndarray:
+    """Render SAR as three channels the way SAR is conventionally read.
+
+    Dual-pol products carry VV and VH, which describe different scattering:
+    surfaces and double bounce in VV, volume scattering in VH. Reading only the
+    first band -- as this did -- discarded VH entirely, which is most of what
+    distinguishes vegetation from built-up in radar.
+
+    The conventional false-colour composite is (VV, VH, VV/VH); the ratio is
+    what separates urban from vegetated. Amplitude is also strongly
+    right-skewed, so it goes to dB before stretching rather than after.
+    """
+    def db(x: np.ndarray) -> np.ndarray:
+        """To decibels, unless the product is already in decibels.
+
+        BigEarthNet's Sentinel-1 patches ship as dB (roughly -35..0), while raw
+        GRD amplitude is non-negative. Taking the log of dB values clamps every
+        negative sample to the floor and flattens the channel to a constant --
+        which is exactly what was happening: SAR scored at chance not because
+        the encoder was unadapted but because the input had been destroyed.
+        """
+        x = np.asarray(x, dtype=np.float32)
+        finite = x[np.isfinite(x)]
+        if finite.size and finite.min() < 0:
+            return x                                   # already logarithmic
+        return 10.0 * np.log10(np.maximum(x, 1e-6))
+
+    if len(bands) >= 2:
+        vv, vh = db(bands[0]), db(bands[1])
+        ratio = vv - vh                        # a dB difference is the ratio
+        return np.stack([_stretch(vv), _stretch(vh), _stretch(ratio)], axis=-1)
+    grey = _stretch(db(bands[0]))
+    return np.stack([grey] * 3, axis=-1)
+
+
+def _open(meta: ImageMeta):
+    """Load an image as three channels for the backbone.
+
+    Optical: bands 4/3/2 are red/green/blue in Sentinel-2 order, so the
+    natural-colour composite is the right default -- it is also what the text
+    descriptions were written against.
+
+    SAR: natural colour is meaningless, so a polarimetric composite is built
+    instead. See `_sar_composite`.
     """
     from PIL import Image
     p = Path(meta.path)
-    if meta.fmt == "GeoTIFF":
-        import rasterio
-        with rasterio.open(p) as src:
-            if src.count >= 4:
-                arr = np.stack([src.read(4), src.read(3), src.read(2)], axis=-1)
-            elif src.count >= 3:
-                arr = np.stack([src.read(1), src.read(2), src.read(3)], axis=-1)
-            else:
-                band = src.read(1)
-                arr = np.stack([band] * 3, axis=-1)            # SAR: grey to RGB
-        # Percentile stretch. Satellite reflectance has a long tail and a raw
-        # min-max stretch leaves everything dark grey.
-        lo, hi = np.percentile(arr, [2, 98])
-        arr = np.clip((arr - lo) / max(hi - lo, 1e-6), 0, 1)
-        return Image.fromarray((arr * 255).astype(np.uint8))
-    return Image.open(p).convert("RGB")
+    if meta.fmt not in ("GeoTIFF", "TIFF"):
+        return Image.open(p).convert("RGB")
+
+    import rasterio
+    with rasterio.open(p) as src:
+        bands = [src.read(i + 1) for i in range(src.count)]
+
+    if meta.modality is Modality.SAR or (len(bands) <= 2 and meta.modality is not Modality.OPTICAL):
+        arr = _sar_composite(bands)
+    elif len(bands) >= 4:
+        # Which indices carry red, green and blue depends on how the product is
+        # packed. A full Sentinel-2 product starts at B01, so B04/B03/B02 are
+        # indices 3/2/1; BigEarthNet drops B01 and starts at B02, putting them
+        # at 2/1/0. Reading the wrong three bands silently returns a plausible
+        # false-colour image, so the count decides rather than an assumption.
+        r, g, b = (2, 1, 0) if len(bands) in (10, 11) else (3, 2, 1)
+        arr = np.stack([_stretch(bands[r]), _stretch(bands[g]), _stretch(bands[b])], axis=-1)
+    elif len(bands) == 3:
+        arr = np.stack([_stretch(b) for b in bands], axis=-1)
+    else:
+        arr = np.stack([_stretch(bands[0])] * 3, axis=-1)
+
+    return Image.fromarray((arr * 255).astype(np.uint8))
 
 
 # Everyday words map onto CORINE class names that never contain them: nobody
@@ -73,6 +136,8 @@ _SYNONYMS: dict[str, tuple[str, ...]] = {
     "woodland": ("transitional woodland shrub", "mixed forest"),
     "urban": ("urban fabric",), "city": ("urban fabric",),
     "buildings": ("urban fabric", "industrial or commercial units"),
+    "building": ("urban fabric", "industrial or commercial units"),
+    "residential": ("urban fabric",), "commercial": ("industrial or commercial units",),
     "housing": ("urban fabric",), "settlement": ("urban fabric",),
     "industry": ("industrial or commercial units",),
     "factory": ("industrial or commercial units",),
@@ -100,6 +165,27 @@ _SYNONYMS: dict[str, tuple[str, ...]] = {
 
 _POLAR = ("is ", "are ", "does ", "do ", "would ", "has ", "have ", "can ",
           "was ", "were ", "any ", "did ")
+
+# "Is it a rural or an urban area" is not a yes/no question despite its opener:
+# the answer is one of the two alternatives it names. Scoring those directly is
+# both more accurate and more honest than answering "yes".
+_EITHER_OR = re.compile(
+    r"\b(?:is|are|was|were|does|do|did|show|shows|depicts?)\b[^?]*?"
+    # The second article is optional: "a rural or urban area" is at least as
+    # common as "a rural or an urban area", and the trailing head noun belongs
+    # to both alternatives rather than to the second one.
+    r"\ban?\s+(\w[\w\s-]*?)\s+or\s+(?:an?\s+)?(\w[\w\s-]*?)\s*"
+    r"(?:area|region|scene|zone|setting|image|photo)?\s*\??$", re.I)
+
+
+def _either_or(query: str) -> list[str] | None:
+    """The two alternatives an either/or question offers, if it is one."""
+    m = _EITHER_OR.search(query.strip())
+    if not m:
+        return None
+    options = [re.sub(r"\s+", " ", g).strip().lower() for g in m.groups()]
+    options = [o for o in options if o and len(o) < 40]
+    return options if len(options) == 2 and options[0] != options[1] else None
 
 
 def _resolve_target(query: str, vocab: list[str]) -> list[str]:
@@ -185,6 +271,20 @@ class VQATool(_BackboneTool):
         conf = _softmax_conf(scores, float(params.get("temperature", 100.0)))
         top = ranked[:top_k]
 
+        # Either/or questions name their own answer space, so score exactly
+        # that rather than falling through to the land-cover vocabulary.
+        options = _either_or(query)
+        if options:
+            noun = "area"
+            ranked_opt = _score_vocab(bb, image, [f"{o} {noun}" for o in options])
+            opt_scores = np.array([s for _, s in ranked_opt])
+            best = ranked_opt[0][0].rsplit(" ", 1)[0]
+            text = (f"{best.capitalize()} — scored "
+                    + " vs ".join(f"{v.rsplit(' ',1)[0]} {s:.3f}" for v, s in ranked_opt)
+                    + ".")
+            return (text, [Evidence("label", v.rsplit(" ", 1)[0], v, s) for v, s in ranked_opt],
+                    _softmax_conf(opt_scores))
+
         # Binary questions are the dominant type in BigEarthNet.txt, and they
         # are answerable from whether the referenced classes rank for the scene.
         targets = _resolve_target(query, vocab)
@@ -254,7 +354,7 @@ class GroundingTool(_BackboneTool):
     spec = ToolSpec(
         name="rs_grounding",
         tasks={Task.GROUNDING},
-        accepts={"threshold", "top_k", "min_area"},
+        accepts={"threshold", "top_k", "min_area", "tiles"},
         needs_images=1,
         description="Text-guided region localisation from dense patch-text similarity.",
         requires=["torch", "transformers"],
@@ -263,11 +363,20 @@ class GroundingTool(_BackboneTool):
     def run(self, images, query, params):
         bb = self._bb()
         image = _open(images[0])
-        tokens, grid = patch_tokens(bb, image)
         phrase = _referring_phrase(query)
         txt = embed_texts(bb, [f"a satellite image of {phrase}"])[0]
 
-        raw = (tokens @ txt).reshape(grid, grid)
+        # Tiling raises the localisation resolution. One pass gives a 7x7 grid,
+        # which over a 512 px image is 73 px per cell -- larger than many of the
+        # objects a referring expression names, so the smallest expressible box
+        # is bigger than the target. Running the encoder over a T x T grid of
+        # crops and stitching the maps gives 7T x 7T cells for T^2 passes.
+        tiles = max(1, int(params.get("tiles", 1)))
+        if tiles > 1:
+            raw = _tiled_heat(bb, image, txt, tiles)
+        else:
+            tokens, grid = patch_tokens(bb, image)
+            raw = (tokens @ txt).reshape(grid, grid)
         # Min-max only to pick regions. It must never feed the confidence: the
         # normalised maximum is 1.0 by construction, so reporting it would make
         # every successful localisation look certain regardless of the evidence.
@@ -297,8 +406,14 @@ def _referring_phrase(query: str) -> str:
     m = re.search(r"<ref>(.*?)</ref>", query, re.S)
     if m:
         return m.group(1).strip()
+    # The imperative is not always at the start: "Use the optical and SAR
+    # images together to identify built-up regions" buries it mid-sentence, and
+    # feeding the whole clause to the text encoder grounds on the instruction
+    # rather than on the thing being asked for.
+    q = re.sub(r"^.*?\bto\s+(?:identify|locate|find|highlight|show|detect|mark)\s+",
+               "", query, flags=re.I)
     q = re.sub(r"^\s*(please\s+)?(highlight|locate|find|show me|point to|mark|outline|"
-               r"segment|identify|where (is|are))\s*", "", query, flags=re.I)
+               r"segment|identify|detect|where (is|are))\s*", "", q, flags=re.I)
     # "the location of the runway in this image" -> "runway". Feeding the whole
     # imperative to the text encoder buries the noun among filler tokens and
     # measurably weakens the heat map.
@@ -309,6 +424,50 @@ def _referring_phrase(query: str) -> str:
     q = re.sub(r"\s+(referred to|mentioned|described|asked about)\b.*$", "", q, flags=re.I)
     q = re.sub(r"^\s*(the|a|an|any|all)\s+", "", q, flags=re.I)
     return re.sub(r"[.?!]+$", "", q).strip() or query
+
+
+def _tiled_heat(bb: Backbone, image, txt: np.ndarray, tiles: int) -> np.ndarray:
+    """Similarity map stitched from a T x T grid of overlapping crops.
+
+    Overlapping by half a tile so an object straddling a tile boundary is whole
+    in at least one crop; the maximum is taken where crops overlap, since a
+    target seen clearly in one crop should not be diluted by a crop that only
+    caught its edge.
+    """
+    w, h = image.size
+    step_x, step_y = w / tiles, h / tiles
+    # Half-tile margin, clamped to the image.
+    mx, my = step_x / 2, step_y / 2
+
+    acc: np.ndarray | None = None
+    counts: np.ndarray | None = None
+    for ty in range(tiles):
+        for tx in range(tiles):
+            left = max(0, int(tx * step_x - mx))
+            top = max(0, int(ty * step_y - my))
+            right = min(w, int((tx + 1) * step_x + mx))
+            bottom = min(h, int((ty + 1) * step_y + my))
+            crop = image.crop((left, top, right, bottom))
+            tokens, grid = patch_tokens(bb, crop)
+            local = (tokens @ txt).reshape(grid, grid)
+
+            if acc is None:
+                size = grid * tiles
+                acc = np.full((size, size), -np.inf, dtype=np.float32)
+                counts = np.zeros((size, size), dtype=np.float32)
+            size = acc.shape[0]
+            y0 = int(round(top / h * size)); y1 = max(y0 + 1, int(round(bottom / h * size)))
+            x0 = int(round(left / w * size)); x1 = max(x0 + 1, int(round(right / w * size)))
+
+            # Nearest-neighbour resize of the local map onto its footprint.
+            yi = np.clip((np.arange(y1 - y0) * grid) // max(y1 - y0, 1), 0, grid - 1)
+            xi = np.clip((np.arange(x1 - x0) * grid) // max(x1 - x0, 1), 0, grid - 1)
+            patch = local[np.ix_(yi, xi)]
+            acc[y0:y1, x0:x1] = np.maximum(acc[y0:y1, x0:x1], patch)
+            counts[y0:y1, x0:x1] += 1
+
+    acc[~np.isfinite(acc)] = float(np.nanmin(acc[np.isfinite(acc)])) if np.isfinite(acc).any() else 0.0
+    return acc
 
 
 def _grounding_confidence(raw: np.ndarray, selected: np.ndarray) -> float:
