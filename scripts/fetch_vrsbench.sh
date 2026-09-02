@@ -15,15 +15,21 @@ FULL="$DEST/Images_val.zip"
 SIZE=4169000000
 
 mkdir -p "$DEST"
-AUTH=()
-[ -n "${HF_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer $HF_TOKEN")
+# Built as a string, not an array: macOS ships bash 3.2, where an empty array
+# expands as unbound under `set -u`.
+AUTH=""
+[ -n "${HF_TOKEN:-}" ] && AUTH="Authorization: Bearer $HF_TOKEN"
 
 for attempt in $(seq 1 100); do
   [ -f "$FULL" ] && break
   have=$(stat -f%z "$PART" 2>/dev/null || stat -c%s "$PART" 2>/dev/null || echo 0)
   [ "$have" -ge "$SIZE" ] && { mv "$PART" "$FULL"; break; }
   echo "attempt $attempt: resuming from $((have / 1000000)) MB of $((SIZE / 1000000))"
-  curl -sSL -C - --retry 3 --max-time 600 "${AUTH[@]}" -o "$PART" "$URL"
+  if [ -n "$AUTH" ]; then
+    curl -sSL -C - --retry 3 --max-time 600 -H "$AUTH" -o "$PART" "$URL"
+  else
+    curl -sSL -C - --retry 3 --max-time 600 -o "$PART" "$URL"
+  fi
 done
 
 if [ -f "$FULL" ]; then
