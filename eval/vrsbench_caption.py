@@ -22,8 +22,7 @@ import random
 import re
 from pathlib import Path
 
-from satquery.registry import build_registry
-from satquery.schema import ImageMeta, Modality
+from satquery.registry import build_controller
 
 _STOP = {
     "the", "a", "an", "of", "in", "on", "at", "to", "and", "or", "is", "are",
@@ -99,19 +98,19 @@ def main() -> None:
     rows = rows[: a.limit] if a.limit else rows
     print(f"VRSBench captioning: {len(rows)} images")
 
-    tool = build_registry().get("rs_caption")
-    ok, why = tool.available()
-    if not ok:
-        raise SystemExit(f"rs_caption unavailable: {why}")
+    # Through the controller, so the generative specialist is used where the
+    # controller would route to it. Calling rs_caption directly measured the
+    # template head no matter what else was registered -- which is exactly what
+    # it did, reporting an unchanged score after the VLM was added.
+    controller = build_controller()
 
     b1, b4, rl, cr = [], [], [], []
     for i, r in enumerate(rows, 1):
         path = images / r["image_id"]
         if not path.exists():
             continue
-        meta = ImageMeta(path=str(path), fmt="PNG", width=512, height=512,
-                         bands=3, modality=Modality.OPTICAL)
-        _, text, _, _ = tool.invoke([meta], r.get("question", "Describe this image."), {})
+        text = controller.run(r.get("question", "Describe this image."),
+                              [str(path)]).text
         cand, ref = tokens(text), tokens(r["ground_truth"])
         b1.append(bleu(cand, ref, 1))
         b4.append(bleu(cand, ref, 4))
