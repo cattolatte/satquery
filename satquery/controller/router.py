@@ -28,6 +28,15 @@ from ..schema import InputKind, Task
 # ones, because "what changed in this built-up area" is a change question that
 # also mentions land cover.
 _PATTERNS: list[tuple[Task, re.Pattern[str]]] = [
+    # Open questions about change ask for a description; polar ones ask for a
+    # yes/no. "What changed between these two dates, and where did the change
+    # occur?" contains "did ... change" and would otherwise be read as change
+    # VQA, so a leading auxiliary disqualifies this pattern outright.
+    (Task.CHANGE_DESCRIPTION, re.compile(
+        r"^(?!\s*(has|have|had|did|does|do|is|are|was|were)\b).*?(?:"
+        r"\b(what|which|where|how)\b.*\bchang(e|ed|es|ing)\b|"
+        r"\bchang(e|ed|es|ing)\b.*\bbetween\b|\bcompare\b.*\bdates?\b|"
+        r"\bbefore\b.*\bafter\b)", re.I)),
     # Change questions split by how ambiguous their verb is.
     #
     # Unambiguous verbs ("shrunk", "appeared") read as change after any polar
@@ -49,10 +58,6 @@ _PATTERNS: list[tuple[Task, re.Pattern[str]]] = [
     (Task.CHANGE_VQA, re.compile(
         r"\b(has|have|had|did)\b.*?\b(grown|grew|new|added|removed|built|"
         r"clear(ed)?|lost|gained|same)\b", re.I)),
-    (Task.CHANGE_DESCRIPTION, re.compile(
-        r"\b(what|which|where|how)\b.*\bchang(e|ed|es|ing)\b|"
-        r"\bchang(e|ed|es|ing)\b.*\bbetween\b|\bcompare\b.*\bdates?\b|"
-        r"\bbefore\b.*\bafter\b", re.I)),
     (Task.CROSS_MODAL, re.compile(
         r"\b(optical|multispectral)\b.*\b(sar|radar)\b|"
         r"\b(sar|radar)\b.*\b(optical|multispectral)\b|"

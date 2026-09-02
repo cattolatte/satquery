@@ -106,6 +106,10 @@ th{color:var(--muted);font-weight:500}
       </div>
       <div id="notes"></div>
       <div id="stages"></div>
+      <div class="row" id="downloads" style="display:none">
+        <a class="chip" id="dl-html" download>Download report (HTML)</a>
+        <a class="chip" id="dl-json" download>Download data (JSON)</a>
+      </div>
     </div>
   </div>
 
@@ -179,6 +183,7 @@ async function ask() {
   $('#result').style.display = 'block';
   $('#answer').innerHTML = '<span class="spin"></span>running the tool chain…';
   $('#notes').innerHTML = ''; $('#stages').innerHTML = '';
+  $('#downloads').style.display = 'none';
   $('#confbar').style.width = '0%'; $('#confval').textContent = '';
 
   const fd = new FormData();
@@ -233,6 +238,11 @@ function render(j) {
     $('#stages').appendChild(stage);
   });
 
+  if (j.report) {
+    $('#dl-html').href = j.report.html;
+    $('#dl-json').href = j.report.json;
+    $('#downloads').style.display = 'flex';
+  }
   renderTrace(t, j.images || []);
 }
 

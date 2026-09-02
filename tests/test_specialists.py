@@ -97,3 +97,10 @@ class TestGroundingConfidence:
             thr = raw.min() + 0.6 * np.ptp(raw)
             c = _grounding_confidence(raw, raw >= thr)
             assert c < 1.0
+
+
+def test_referring_phrase_on_the_statements_own_query():
+    """'Highlight the water body referred to in the query.' is quoted verbatim
+    in the problem statement; the trailing clause is not part of the subject."""
+    assert _referring_phrase(
+        "Highlight the water body referred to in the query.") == "water body"

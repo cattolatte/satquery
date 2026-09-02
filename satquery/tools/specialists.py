@@ -244,7 +244,8 @@ class CaptionTool(_BackboneTool):
         meta = images[0]
         where = f" over {meta.width}x{meta.height} px" if meta.width else ""
         modality = meta.modality.value
-        text = (f"A {modality} remote-sensing scene{where} showing "
+        article = "An" if modality[:1].lower() in "aeiou" else "A"
+        text = (f"{article} {modality} remote-sensing scene{where} showing "
                 + ", ".join(v for v, _ in keep) + ".")
         return text, [Evidence("label", v, v, s) for v, s in keep], _softmax_conf(scores)
 
@@ -303,6 +304,9 @@ def _referring_phrase(query: str) -> str:
     # measurably weakens the heat map.
     q = re.sub(r"^\s*(the\s+)?(location|position|extent|area|region)s?\s+of\s+", "", q, flags=re.I)
     q = re.sub(r"\s+(in|on|within|from)\s+(this|the)\s+(image|scene|picture|photo)\b.*$", "", q, flags=re.I)
+    # "the water body referred to in the query" -> "water body". The statement
+    # phrases one of its representative queries exactly this way.
+    q = re.sub(r"\s+(referred to|mentioned|described|asked about)\b.*$", "", q, flags=re.I)
     q = re.sub(r"^\s*(the|a|an|any|all)\s+", "", q, flags=re.I)
     return re.sub(r"[.?!]+$", "", q).strip() or query
 

@@ -103,3 +103,45 @@ class TestChangeVerbAmbiguity:
 
     def test_since_a_year_is_temporal(self):
         assert classify("Did the reservoir shrink since 2019?") is Task.CHANGE_VQA
+
+
+class TestProblemStatementQueries:
+    """The five representative queries quoted verbatim in the problem statement.
+
+    These are the specification, so a regression here is a conformance failure
+    rather than a quality one.
+    """
+
+    def test_describe_land_cover_and_objects(self):
+        assert classify(
+            "Describe the land-cover and major objects visible in this image."
+        ) is Task.CAPTION
+
+    def test_highlight_the_water_body(self):
+        assert classify(
+            "Highlight the water body referred to in the query."
+        ) is Task.GROUNDING
+
+    def test_what_changed_and_where(self):
+        """Contains "did ... change", which reads as a polar question unless
+        the leading interrogative is given priority."""
+        assert classify(
+            "What changed between these two dates, and where did the change occur?"
+        ) is Task.CHANGE_DESCRIPTION
+
+    def test_use_optical_and_sar_together(self):
+        assert classify(
+            "Use the optical and SAR images together to identify built-up and "
+            "water-covered regions."
+        ) is Task.CROSS_MODAL
+
+    def test_has_built_up_area_increased(self):
+        assert classify(
+            "Has the built-up area increased, decreased, or remained unchanged?"
+        ) is Task.CHANGE_VQA
+
+    def test_open_change_question_outranks_polar_reading(self):
+        """A wh-question about change is a description request; a polar
+        question about the same scene is change VQA."""
+        assert classify("Did the forest area change between the two dates?") is Task.CHANGE_VQA
+        assert classify("What changed between the two dates?") is Task.CHANGE_DESCRIPTION
