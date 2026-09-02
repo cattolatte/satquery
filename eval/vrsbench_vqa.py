@@ -21,7 +21,6 @@ import re
 from pathlib import Path
 
 from satquery.registry import build_controller
-from satquery.schema import ImageMeta, Modality
 
 IMAGES = Path("data/bench/vrsbench/Images_val")
 

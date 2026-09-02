@@ -20,10 +20,8 @@ from __future__ import annotations
 import numpy as np
 
 from ..schema import Evidence, Modality, Task
-from .backbone import (
-    embed_images, embed_texts, embed_texts_cached, encode_image, load, patch_tokens,
-)
-from .base import Tool, ToolSpec
+from .backbone import embed_images, embed_texts_cached, encode_image
+from .base import ToolSpec
 from .specialists import LAND_COVER, _BackboneTool, _open, _score_vocab, _boxes_from_heat
 
 # What each sensor is actually reliable for. SAR is specular over smooth water,

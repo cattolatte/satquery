@@ -25,8 +25,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
-
 from ..schema import Evidence, ImageMeta, Task
 from .base import Tool, ToolSpec
 from .specialists import _open

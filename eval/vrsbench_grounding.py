@@ -26,7 +26,6 @@ import numpy as np
 import pandas as pd
 
 from satquery.registry import build_controller
-from satquery.schema import ImageMeta, Modality
 
 _PROMPT = re.compile(
     r"(?:<image>\s*)?(?:please\s+)?provide the bounding box coordinate of the region "

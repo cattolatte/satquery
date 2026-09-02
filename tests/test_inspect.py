@@ -5,7 +5,6 @@ a tool built for a different sensor. The bug this guards: band count alone
 implied SAR, so a grayscale photograph was read as radar and two ordinary
 images became a co-registered optical-SAR pair.
 """
-import tempfile
 from pathlib import Path
 
 import pytest
