@@ -20,7 +20,9 @@ from __future__ import annotations
 import numpy as np
 
 from ..schema import Evidence, Modality, Task
-from .backbone import embed_images, embed_texts, load, patch_tokens
+from .backbone import (
+    embed_images, embed_texts, embed_texts_cached, encode_image, load, patch_tokens,
+)
 from .base import Tool, ToolSpec
 from .specialists import LAND_COVER, _BackboneTool, _open, _score_vocab, _boxes_from_heat
 
@@ -71,11 +73,20 @@ class ChangeTool(_BackboneTool):
         bb = self._bb()
         before, after = _open(images[0]), _open(images[1])
 
-        # Where did it change?
-        t0, grid = patch_tokens(bb, before)
-        t1, _ = patch_tokens(bb, after)
-        n = min(len(t0), len(t1))
-        divergence = 1.0 - np.sum(t0[:n] * t1[:n], axis=1)      # cosine distance
+        # Where did it change? One vision pass per image, reused below for the
+        # vocabulary ranking as well -- the encoder was previously run twice per
+        # image, four times for the pair.
+        e0, t0, grid = encode_image(bb, before)
+        e1, t1, grid1 = encode_image(bb, after)
+
+        # Both images go through the same processor at a fixed size, so the
+        # grids match. Assert it rather than silently truncating: the old code
+        # took min(len(t0), len(t1)) and then reshaped to the full grid, which
+        # would have raised anyway if the guard had ever been needed.
+        if grid != grid1 or len(t0) != len(t1):
+            return ("Cannot compare: the two images produced different patch "
+                    "grids."), [], 0.0
+        divergence = 1.0 - np.sum(t0 * t1, axis=1)              # cosine distance
         heat = divergence.reshape(grid, grid)
         heat = (heat - heat.min()) / max(np.ptp(heat), 1e-6)
 
@@ -94,15 +105,17 @@ class ChangeTool(_BackboneTool):
         # scene-level delta and a 54.8% majority baseline. Both effects are
         # small and neither is presented as more than that -- see
         # docs/adr/0004-change-signal.md.
-        txt = embed_texts(bb, [f"a satellite image of {c}" for c in vocab])
+        txt = embed_texts_cached(bb, [f"a satellite image of {c}" for c in vocab])
         areas = []
         for toks in (t0, t1):
             assign = (toks @ txt.T).argmax(axis=1)
             areas.append(np.bincount(assign, minlength=len(vocab)) / max(len(assign), 1))
         area_delta = {c: float(areas[1][i] - areas[0][i]) for i, c in enumerate(vocab)}
 
-        r0 = dict(_score_vocab(bb, before, vocab))
-        r1 = dict(_score_vocab(bb, after, vocab))
+        # Rank the vocabulary from the pooled features already computed.
+        sims0, sims1 = txt @ e0, txt @ e1
+        r0 = {c: float(sims0[i]) for i, c in enumerate(vocab)}
+        r1 = {c: float(sims1[i]) for i, c in enumerate(vocab)}
         delta = sorted(((c, r1[c] - r0[c]) for c in vocab), key=lambda kv: -abs(kv[1]))
         min_delta = float(params.get("delta", 0.01))
         # How many classes to report. Configurable because a caller asking
@@ -116,12 +129,20 @@ class ChangeTool(_BackboneTool):
             return ("No substantive change detected between the two dates.",
                     [Evidence("change_map", heat.tolist(), "divergence")], 0.7)
 
-        parts = []
-        for cls, d in moved:
-            parts.append(f"{cls} {'increased' if d > 0 else 'decreased'} ({d:+.3f})")
-        where = (f" Change is concentrated in {len(regions)} region(s), "
-                 f"strongest at {regions[0]['box']}." if regions else "")
-        text = (f"{changed_frac:.0%} of the scene changed. " + "; ".join(parts) + "." + where)
+        # Assembled from the clauses that actually have content. Concatenating
+        # unconditionally produced "12% of the scene changed. . Change is..."
+        # whenever no class passed the delta threshold.
+        clauses = [f"{changed_frac:.0%} of the scene changed."]
+        if moved:
+            clauses.append("; ".join(
+                f"{cls} {'increased' if d > 0 else 'decreased'} ({d:+.3f})"
+                for cls, d in moved) + ".")
+        else:
+            clauses.append("No single land-cover class shifted decisively.")
+        if regions:
+            clauses.append(f"Change is concentrated in {len(regions)} region(s), "
+                           f"strongest at {regions[0]['box']}.")
+        text = " ".join(clauses)
 
         ev: list[Evidence] = [Evidence("change_map", heat.tolist(), "divergence")]
         ev += [Evidence("bbox", r["box"], "changed region", r["score"]) for r in regions]

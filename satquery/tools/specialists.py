@@ -19,7 +19,9 @@ from typing import Any
 import numpy as np
 
 from ..schema import Evidence, ImageMeta, Modality, Task
-from .backbone import Backbone, embed_images, embed_texts, load, patch_tokens
+from .backbone import (
+    Backbone, embed_images, embed_texts, embed_texts_cached, load, patch_tokens,
+)
 from .base import Tool, ToolSpec
 
 # CORINE-derived vocabulary. BigEarthNet is labelled with these, so they are the
@@ -219,7 +221,7 @@ def _resolve_target(query: str, vocab: list[str]) -> list[str]:
 def _score_vocab(bb: Backbone, image, vocab: list[str]) -> list[tuple[str, float]]:
     """Rank a vocabulary against one image by cosine similarity."""
     img = embed_images(bb, [image])[0]
-    txt = embed_texts(bb, [f"a satellite image of {v}" for v in vocab])
+    txt = embed_texts_cached(bb, [f"a satellite image of {v}" for v in vocab])
     sims = txt @ img
     order = np.argsort(-sims)
     return [(vocab[i], float(sims[i])) for i in order]
