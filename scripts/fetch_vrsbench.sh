@@ -14,6 +14,12 @@ PART="$DEST/Images_val.zip.part"
 FULL="$DEST/Images_val.zip"
 SIZE=4169000000
 
+# Abort only on a genuine stall, never on a wall clock. --max-time kills a
+# healthy transfer mid-file, and the restart does not always resume cleanly
+# through the CDN redirect, so progress goes backwards: 1.4 GB, then 1.8 GB,
+# then 0.5 GB. Under 10 KB/s for 120 s is a stall; anything faster is progress.
+STALL="--speed-limit 10000 --speed-time 120"
+
 mkdir -p "$DEST"
 # Built as a string, not an array: macOS ships bash 3.2, where an empty array
 # expands as unbound under `set -u`.
@@ -26,9 +32,9 @@ for attempt in $(seq 1 100); do
   [ "$have" -ge "$SIZE" ] && { mv "$PART" "$FULL"; break; }
   echo "attempt $attempt: resuming from $((have / 1000000)) MB of $((SIZE / 1000000))"
   if [ -n "$AUTH" ]; then
-    curl -sSL -C - --retry 3 --max-time 600 -H "$AUTH" -o "$PART" "$URL"
+    curl -sSL -C - --retry 3 $STALL -H "$AUTH" -o "$PART" "$URL"
   else
-    curl -sSL -C - --retry 3 --max-time 600 -o "$PART" "$URL"
+    curl -sSL -C - --retry 3 $STALL -o "$PART" "$URL"
   fi
 done
 

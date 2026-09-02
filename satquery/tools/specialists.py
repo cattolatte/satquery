@@ -65,7 +65,19 @@ def _sar_composite(bands: list[np.ndarray]) -> np.ndarray:
     right-skewed, so it goes to dB before stretching rather than after.
     """
     def db(x: np.ndarray) -> np.ndarray:
-        return 10.0 * np.log10(np.maximum(x.astype(np.float32), 1e-6))
+        """To decibels, unless the product is already in decibels.
+
+        BigEarthNet's Sentinel-1 patches ship as dB (roughly -35..0), while raw
+        GRD amplitude is non-negative. Taking the log of dB values clamps every
+        negative sample to the floor and flattens the channel to a constant --
+        which is exactly what was happening: SAR scored at chance not because
+        the encoder was unadapted but because the input had been destroyed.
+        """
+        x = np.asarray(x, dtype=np.float32)
+        finite = x[np.isfinite(x)]
+        if finite.size and finite.min() < 0:
+            return x                                   # already logarithmic
+        return 10.0 * np.log10(np.maximum(x, 1e-6))
 
     if len(bands) >= 2:
         vv, vh = db(bands[0]), db(bands[1])
@@ -97,7 +109,13 @@ def _open(meta: ImageMeta):
     if meta.modality is Modality.SAR or (len(bands) <= 2 and meta.modality is not Modality.OPTICAL):
         arr = _sar_composite(bands)
     elif len(bands) >= 4:
-        arr = np.stack([_stretch(bands[3]), _stretch(bands[2]), _stretch(bands[1])], axis=-1)
+        # Which indices carry red, green and blue depends on how the product is
+        # packed. A full Sentinel-2 product starts at B01, so B04/B03/B02 are
+        # indices 3/2/1; BigEarthNet drops B01 and starts at B02, putting them
+        # at 2/1/0. Reading the wrong three bands silently returns a plausible
+        # false-colour image, so the count decides rather than an assumption.
+        r, g, b = (2, 1, 0) if len(bands) in (10, 11) else (3, 2, 1)
+        arr = np.stack([_stretch(bands[r]), _stretch(bands[g]), _stretch(bands[b])], axis=-1)
     elif len(bands) == 3:
         arr = np.stack([_stretch(b) for b in bands], axis=-1)
     else:
