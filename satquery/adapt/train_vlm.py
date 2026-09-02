@@ -133,6 +133,7 @@ def main() -> None:
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument("--image-size", type=int, default=512)
+    ap.add_argument("--save-every", type=int, default=1000)
     ap.add_argument("--out", default=str(OUT))
     a = ap.parse_args()
 
@@ -191,6 +192,13 @@ def main() -> None:
                 print(f"  epoch {epoch} step {seen}/{len(loader)}  "
                       f"loss {running/200:.4f}  ({time.time()-t0:.0f}s)", flush=True)
                 running = 0.0
+            # Save periodically. A long run on one machine that only writes at
+            # the end loses everything to an interruption, and the adapter is
+            # 4 MB -- there is no reason to risk hours of it.
+            if seen % a.save_every == 0:
+                model.save_pretrained(a.out)
+                processor.save_pretrained(a.out)
+                print(f"    checkpoint at step {seen}", flush=True)
 
     acc = sample_answers(model, processor, held, device)
     print(f"\nafter: exact-match {acc:.1%}")
