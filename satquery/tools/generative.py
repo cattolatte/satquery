@@ -68,12 +68,12 @@ def load() -> Generative | None:
         adapter = Path(ADAPTER)
         if (adapter / "adapter_config.json").exists():
             from peft import PeftModel
-            processor = AutoProcessor.from_pretrained(str(adapter))
+            processor = AutoProcessor.from_pretrained(str(adapter), do_image_splitting=False)
             base = AutoModelForImageTextToText.from_pretrained(BASE, torch_dtype=torch.float32)
             model = PeftModel.from_pretrained(base, str(adapter)).to(device).eval()
             return Generative(model=model, processor=processor, device=device, adapted=True)
 
-        processor = AutoProcessor.from_pretrained(BASE)
+        processor = AutoProcessor.from_pretrained(BASE, do_image_splitting=False)
         model = AutoModelForImageTextToText.from_pretrained(
             BASE, torch_dtype=torch.float32).to(device).eval()
         return Generative(model=model, processor=processor, device=device, adapted=False)

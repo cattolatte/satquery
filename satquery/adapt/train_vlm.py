@@ -55,38 +55,47 @@ class VRSSet(Dataset):
 
 
 def build_collate(processor):
+    """Batch into (prompt + answer), with the loss masked to the answer.
+
+    The prompt is templated separately from the answer rather than templating
+    the whole conversation at once. Two reasons, one of them a bug this cost:
+
+      - The image placeholder expands into a long run of image tokens bounded
+        by markers. Truncating the combined text cuts through that run, the
+        processor then cannot find the closing boundary, and it fails with an
+        arithmetic error on a None offset rather than anything legible.
+      - Tokenising the prompt on its own gives the exact answer boundary, so
+        label masking is by construction rather than by searching for a marker
+        string in the ids.
+    """
     def collate(batch: list[dict]):
-        images, texts = [], []
+        images, prompts, fulls = [], [], []
         for r in batch:
-            prompt = PROMPTS.get(r["task"], "{q}").format(q=r["question"])
-            messages = [
-                {"role": "user", "content": [{"type": "image"},
-                                             {"type": "text", "text": prompt}]},
-                {"role": "assistant", "content": [{"type": "text", "text": r["answer"]}]},
-            ]
-            texts.append(processor.apply_chat_template(messages, add_generation_prompt=False))
+            instruction = PROMPTS.get(r["task"], "{q}").format(q=r["question"])
+            user = [{"role": "user", "content": [{"type": "image"},
+                                                 {"type": "text", "text": instruction}]}]
+            prompt = processor.apply_chat_template(user, add_generation_prompt=True)
+            prompts.append(prompt)
+            fulls.append(prompt + " " + r["answer"] + "<end_of_utterance>")
             images.append([Image.open(r["image"]).convert("RGB")])
 
-        enc = processor(text=texts, images=images, return_tensors="pt",
-                        padding=True, truncation=True, max_length=1024)
+        enc = processor(text=fulls, images=images, return_tensors="pt", padding=True)
         labels = enc["input_ids"].clone()
-        labels[labels == processor.tokenizer.pad_token_id] = -100
+        labels[enc["attention_mask"] == 0] = -100
 
-        # Mask everything before the assistant's turn: the loss belongs on the
-        # answer, not on the question the model was given.
-        marker = processor.tokenizer("Assistant:", add_special_tokens=False)["input_ids"]
-        if marker:
-            for row in range(labels.shape[0]):
-                ids = enc["input_ids"][row].tolist()
-                cut = 0
-                for pos in range(len(ids) - len(marker), -1, -1):
-                    if ids[pos:pos + len(marker)] == marker:
-                        cut = pos + len(marker)
-                        break
-                labels[row, :cut] = -100
-        image_token = getattr(processor.tokenizer, "image_token_id", None)
-        if image_token is not None:
-            labels[labels == image_token] = -100
+        # Everything up to where the answer starts is context, not target.
+        for row, prompt in enumerate(prompts):
+            n = len(processor.tokenizer(prompt, add_special_tokens=False)["input_ids"])
+            # The prompt's image placeholder expands, so count on the encoded
+            # row instead of trusting the text-only length.
+            ids = enc["input_ids"][row].tolist()
+            marker = processor.tokenizer("Assistant:", add_special_tokens=False)["input_ids"]
+            cut = n
+            for pos in range(len(ids) - len(marker), -1, -1):
+                if ids[pos:pos + len(marker)] == marker:
+                    cut = pos + len(marker)
+                    break
+            labels[row, :cut] = -100
         enc["labels"] = labels
         return enc
     return collate
@@ -123,6 +132,7 @@ def main() -> None:
     ap.add_argument("--accum", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--rank", type=int, default=16)
+    ap.add_argument("--image-size", type=int, default=512)
     ap.add_argument("--out", default=str(OUT))
     a = ap.parse_args()
 
@@ -131,7 +141,12 @@ def main() -> None:
 
     device = ("cuda" if torch.cuda.is_available()
               else "mps" if torch.backends.mps.is_available() else "cpu")
-    processor = AutoProcessor.from_pretrained(BASE)
+    # Image splitting tiles each frame into many crops, which multiplies the
+    # sequence length and put a 512x512 batch of two over 30 GB on MPS. One
+    # global view per image is enough for scene-level and object-level
+    # questions at this resolution, and it is what makes the run fit at all.
+    processor = AutoProcessor.from_pretrained(BASE, do_image_splitting=False)
+    processor.image_processor.size = {"longest_edge": a.image_size}
     model = AutoModelForImageTextToText.from_pretrained(BASE, torch_dtype=torch.float32)
 
     lora = LoraConfig(
