@@ -7,13 +7,15 @@ so "which tools exist" is answerable without importing the controller.
 from __future__ import annotations
 
 from .tools.base import Registry
+from .tools.detector import DetectionTool
 from .tools.multi_image import ChangeTool, CrossModalTool
 from .tools.specialists import CaptionTool, GroundingTool, VQATool
 
 
 def build_registry() -> Registry:
     r = Registry()
-    for tool in (VQATool(), CaptionTool(), GroundingTool(), ChangeTool(), CrossModalTool()):
+    for tool in (VQATool(), CaptionTool(), GroundingTool(), DetectionTool(),
+                 ChangeTool(), CrossModalTool()):
         r.register(tool)
     return r
 

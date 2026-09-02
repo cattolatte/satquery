@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from satquery.registry import build_registry
+from satquery.registry import build_controller
 from satquery.schema import ImageMeta, Modality
 
 # RSVQA-LR question families, in the order they should be tested.
@@ -82,11 +82,11 @@ def predicted_answer(text: str, qtype: str) -> str:
         urban = ("urban fabric", "industrial or commercial units", "road network")
         return "urban" if any(c in low for c in urban) else "rural"
     if qtype == "count":
-        # Deliberately not attempted. A global image-text similarity has no
-        # mechanism for counting instances, and scraping a digit out of the
-        # prose would score occasional accidental hits that misrepresent the
-        # system as partially capable when it is not capable at all.
-        return "unsupported"
+        # The detector answers with the count as the leading token. Only that
+        # position is read: scraping any digit from the prose would pick up
+        # thresholds and ranks and score accidental hits.
+        m = re.match(r"\s*(\d+)\b", text)
+        return m.group(1) if m else "unsupported"
     return "unparsed"
 
 
@@ -102,10 +102,10 @@ def main() -> None:
         df = df.head(a.limit)
     print(f"RSVQA-LR: {len(df)} questions")
 
-    tool = build_registry().get("rs_vqa")
-    ok, why = tool.available()
-    if not ok:
-        raise SystemExit(f"rs_vqa unavailable: {why}")
+    # Through the controller, not a single tool: selecting between the
+    # scene-level backbone and the detector is part of what is being measured,
+    # and calling one tool directly would bypass exactly that step.
+    controller = build_controller()
 
     per_type: dict[str, list[bool]] = collections.defaultdict(list)
     unparsed: dict[str, int] = collections.defaultdict(int)
@@ -114,11 +114,8 @@ def main() -> None:
     for i, row in enumerate(df.itertuples(), 1):
         path = tmp / f"{i}.png"
         path.write_bytes(row.image["bytes"])
-        meta = ImageMeta(path=str(path), fmt="PNG", width=256, height=256,
-                         bands=3, modality=Modality.OPTICAL)
-
         qtype = question_type(row.question)
-        _, text, _, _ = tool.invoke([meta], row.question, {})
+        text = controller.run(row.question, [str(path)]).text
         pred = predicted_answer(text, qtype)
         gold = normalise(row.answer)
         if pred in ("unparsed", "unsupported"):

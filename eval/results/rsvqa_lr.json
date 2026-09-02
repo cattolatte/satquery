@@ -1,13 +1,13 @@
 {
  "benchmark": "RSVQA-LR (dmarsili/RSVQA-LR-2k validation)",
  "n": 800,
- "overall": 0.34875,
+ "overall": 0.415,
  "scene_level": 0.5078947368421053,
  "by_type": {
   "count": {
    "n": 250,
-   "accuracy": 0.0,
-   "unparsed": 250
+   "accuracy": 0.212,
+   "unparsed": 0
   },
   "comparison": {
    "n": 209,

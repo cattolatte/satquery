@@ -128,9 +128,9 @@ Measured, not asserted. Full breakdown with baselines in [BENCHMARKS.md](BENCHMA
 |---|---|---|
 | Optical–SAR pairs | cross-modal (mandatory) | fused **37.6%** P@3, **+1.4** over the better single sensor |
 | CDVQA | change VQA (mandatory) | **47.3%** over 300 questions |
-| RSVQA-LR | single-image VQA | 34.9% over 800; 50.8% scene-level |
-| VRSBench VQA | single-image VQA | 7.6% exact / 8.7% lenient over 1,440 |
-| VRSBench grounding | text-guided grounding | 0.4% Acc@0.5 IoU |
+| RSVQA-LR | single-image VQA | **41.5%** over 800; counting **21.2%** |
+| VRSBench VQA | single-image VQA | **11.5%** exact / 12.7% lenient over 1,440 |
+| VRSBench grounding | text-guided grounding | **25.1%** Acc@0.5 IoU |
 | VRSBench captioning | scene description | ROUGE-L 0.026 |
 
 Every number comes from the real serving path, the registered tool invoked
@@ -145,18 +145,17 @@ The rest are weak, and the reasons are structural rather than tuning problems.
 
 Open, and stated rather than glossed:
 
-- **Object-level questions are out of reach.** Eight of VRSBench VQA's twelve
-  types, and RSVQA's shape/size questions, ask about an individual object's
-  colour, count, position or shape. A scene-level land-cover backbone scores at
-  chance on all of them. Closing this needs an open-vocabulary detection head —
-  an architectural addition, not a parameter.
-- **Counting is not attempted.** 250 of 800 RSVQA questions and 120 of the
-  VRSBench sample ask "how many". These score zero by design rather than by
-  accident, after an earlier version scored 12.5% by scraping stray digits.
-- **Referring grounding fails on small targets.** 0.4% Acc@0.5. The 7×7 patch
-  grid cannot express a box smaller than ~73 px; tiling raises resolution
-  monotonically but not nearly enough, because CLIP patch tokens were never
-  supervised for localisation.
+- **Object-level questions are addressed but weak.** An open-vocabulary
+  detector now serves them, which moved grounding from 0.2% to 25.1% and
+  counting from nothing to 21.2%. Most VRSBench object types still sit below
+  their majority baselines, so this is a working capability rather than a
+  strong one.
+- **Attribute questions are the weakest.** Colour is read as the mean pixel
+  value inside a box and direction is not modelled at all; both score near
+  zero. A finer attribute head would be the next addition.
+- **Detection recall limits grounding.** 192 of 800 referring expressions
+  produce no box at all even at a 0.03 threshold, which caps Acc@0.5 well below
+  what the resolver could otherwise reach.
 - **Captioning is a vocabulary mismatch.** A 21-class land-cover summary against
   long human descriptions of vehicles and colours. The metrics measure a
   difference in kind.

@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from satquery.registry import build_registry
+from satquery.registry import build_controller
 from satquery.schema import ImageMeta, Modality
 
 _PROMPT = re.compile(
@@ -80,10 +80,10 @@ def main() -> None:
         df = df.head(a.limit)
     print(f"VRSBench referring grounding: {len(df)} expressions")
 
-    tool = build_registry().get("rs_grounding")
-    ok, why = tool.available()
-    if not ok:
-        raise SystemExit(f"rs_grounding unavailable: {why}")
+    # Through the controller: which grounding tool serves a query is part of
+    # what is measured, since object targets and land-cover targets go to
+    # different specialists.
+    controller = build_controller()
 
     params = {"tiles": a.tiles, "min_area": a.min_area, "threshold": a.threshold}
     print(f"params: {params}")
@@ -101,11 +101,8 @@ def main() -> None:
 
         gold = [float(x) for x in np.asarray(row.answer).ravel()[:4]]
         sentence = referring_sentence(row.problem)
-        meta = ImageMeta(path=str(path), fmt="PNG", width=w, height=h,
-                         bands=3, modality=Modality.OPTICAL)
-
-        _, _, evidence, _ = tool.invoke([meta], sentence, params)
-        boxes = [e for e in evidence if e.kind == "bbox"]
+        answer = controller.run(sentence, [str(path)])
+        boxes = [e for e in answer.evidence if e.kind == "bbox"]
         if not boxes:
             misses += 1
             score = 0.0
