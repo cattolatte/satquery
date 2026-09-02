@@ -1,0 +1,39 @@
+{
+ "benchmark": "CDVQA (ljx620/CDVQA test shards 0-2)",
+ "n": 300,
+ "overall": 0.48333333333333334,
+ "by_type": {
+  "change_or_not": {
+   "n": 115,
+   "accuracy": 0.5391304347826087
+  },
+  "change_ratio_types": {
+   "n": 45,
+   "accuracy": 0.37777777777777777
+  },
+  "decrease_or_not": {
+   "n": 35,
+   "accuracy": 0.7714285714285715
+  },
+  "increase_or_not": {
+   "n": 27,
+   "accuracy": 0.7407407407407407
+  },
+  "change_to_what": {
+   "n": 22,
+   "accuracy": 0.22727272727272727
+  },
+  "smallest_change": {
+   "n": 21,
+   "accuracy": 0.23809523809523808
+  },
+  "largest_change": {
+   "n": 21,
+   "accuracy": 0.23809523809523808
+  },
+  "change_ratio": {
+   "n": 14,
+   "accuracy": 0.2857142857142857
+  }
+ }
+}

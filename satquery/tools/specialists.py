@@ -73,6 +73,8 @@ _SYNONYMS: dict[str, tuple[str, ...]] = {
     "woodland": ("transitional woodland shrub", "mixed forest"),
     "urban": ("urban fabric",), "city": ("urban fabric",),
     "buildings": ("urban fabric", "industrial or commercial units"),
+    "building": ("urban fabric", "industrial or commercial units"),
+    "residential": ("urban fabric",), "commercial": ("industrial or commercial units",),
     "housing": ("urban fabric",), "settlement": ("urban fabric",),
     "industry": ("industrial or commercial units",),
     "factory": ("industrial or commercial units",),
@@ -100,6 +102,24 @@ _SYNONYMS: dict[str, tuple[str, ...]] = {
 
 _POLAR = ("is ", "are ", "does ", "do ", "would ", "has ", "have ", "can ",
           "was ", "were ", "any ", "did ")
+
+# "Is it a rural or an urban area" is not a yes/no question despite its opener:
+# the answer is one of the two alternatives it names. Scoring those directly is
+# both more accurate and more honest than answering "yes".
+_EITHER_OR = re.compile(
+    r"\b(?:is|are|was|were)\s+(?:it|this|the\s+\w+|there)?\s*"
+    r"an?\s+(\w[\w\s-]*?)\s+or\s+an?\s+(\w[\w\s-]*?)\s*(?:area|region|scene|zone)?\s*\??$",
+    re.I)
+
+
+def _either_or(query: str) -> list[str] | None:
+    """The two alternatives an either/or question offers, if it is one."""
+    m = _EITHER_OR.search(query.strip())
+    if not m:
+        return None
+    options = [re.sub(r"\s+", " ", g).strip().lower() for g in m.groups()]
+    options = [o for o in options if o and len(o) < 40]
+    return options if len(options) == 2 and options[0] != options[1] else None
 
 
 def _resolve_target(query: str, vocab: list[str]) -> list[str]:
@@ -184,6 +204,20 @@ class VQATool(_BackboneTool):
         scores = np.array([s for _, s in ranked])
         conf = _softmax_conf(scores, float(params.get("temperature", 100.0)))
         top = ranked[:top_k]
+
+        # Either/or questions name their own answer space, so score exactly
+        # that rather than falling through to the land-cover vocabulary.
+        options = _either_or(query)
+        if options:
+            noun = "area"
+            ranked_opt = _score_vocab(bb, image, [f"{o} {noun}" for o in options])
+            opt_scores = np.array([s for _, s in ranked_opt])
+            best = ranked_opt[0][0].rsplit(" ", 1)[0]
+            text = (f"{best.capitalize()} — scored "
+                    + " vs ".join(f"{v.rsplit(' ',1)[0]} {s:.3f}" for v, s in ranked_opt)
+                    + ".")
+            return (text, [Evidence("label", v.rsplit(" ", 1)[0], v, s) for v, s in ranked_opt],
+                    _softmax_conf(opt_scores))
 
         # Binary questions are the dominant type in BigEarthNet.txt, and they
         # are answerable from whether the referenced classes rank for the scene.

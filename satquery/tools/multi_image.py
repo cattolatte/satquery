@@ -50,7 +50,7 @@ class ChangeTool(_BackboneTool):
     spec = ToolSpec(
         name="rs_change",
         tasks={Task.CHANGE_DESCRIPTION, Task.CHANGE_VQA},
-        accepts={"threshold", "top_k", "vocab", "min_area", "delta"},
+        accepts={"threshold", "top_k", "vocab", "min_area", "delta", "max_classes"},
         needs_images=2,
         description="Bi-temporal change map and description from patch-embedding divergence.",
         requires=["torch", "transformers"],
@@ -74,11 +74,31 @@ class ChangeTool(_BackboneTool):
 
         # What changed, and in which direction?
         vocab = params.get("vocab") or LAND_COVER
+
+        # Per-class AREA change, from patch-level assignment on each date.
+        #
+        # Measured against the scene-level score difference below, this is the
+        # better signal for "did the area of X change": on CDVQA's polar change
+        # questions it scores 58.1% on a held-out shard against 56.5% for the
+        # scene-level delta and a 54.8% majority baseline. Both effects are
+        # small and neither is presented as more than that -- see
+        # docs/adr/0004-change-signal.md.
+        txt = embed_texts(bb, [f"a satellite image of {c}" for c in vocab])
+        areas = []
+        for toks in (t0, t1):
+            assign = (toks @ txt.T).argmax(axis=1)
+            areas.append(np.bincount(assign, minlength=len(vocab)) / max(len(assign), 1))
+        area_delta = {c: float(areas[1][i] - areas[0][i]) for i, c in enumerate(vocab)}
+
         r0 = dict(_score_vocab(bb, before, vocab))
         r1 = dict(_score_vocab(bb, after, vocab))
         delta = sorted(((c, r1[c] - r0[c]) for c in vocab), key=lambda kv: -abs(kv[1]))
         min_delta = float(params.get("delta", 0.01))
-        moved = [(c, d) for c, d in delta if abs(d) >= min_delta][:4]
+        # How many classes to report. Configurable because a caller asking
+        # about one specific class needs that class's delta even when three
+        # others moved more; the default keeps prose readable.
+        moved = [(c, d) for c, d in delta
+                 if abs(d) >= min_delta][:int(params.get("max_classes", 4))]
 
         changed_frac = float((heat >= thr).mean())
         if not moved and changed_frac < 0.02:
@@ -95,6 +115,9 @@ class ChangeTool(_BackboneTool):
         ev: list[Evidence] = [Evidence("change_map", heat.tolist(), "divergence")]
         ev += [Evidence("bbox", r["box"], "changed region", r["score"]) for r in regions]
         ev += [Evidence("delta", d, cls, abs(d)) for cls, d in moved]
+        # Area deltas for every class, not just the movers: a caller asking
+        # about one class needs its value even when others moved more.
+        ev += [Evidence("area_delta", d, cls, abs(d)) for cls, d in area_delta.items()]
 
         # Confidence tracks how decisively the scene separates into changed and
         # unchanged. A heatmap that is uniformly middling means the encoder
