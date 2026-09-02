@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SatQuery AI</title>
+<style>
+:root{
+  --bg:#0e1116; --panel:#161b22; --panel-2:#1c232c; --line:#2a323d;
+  --ink:#e6edf3; --muted:#8b98a5; --accent:#4cc2ff; --accent-dim:#1f6feb;
+  --ok:#3fb950; --warn:#d29922; --bad:#f85149; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+header{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;
+  align-items:baseline;gap:14px;flex-wrap:wrap}
+h1{margin:0;font-size:19px;letter-spacing:-.2px}
+.tag{font:11px var(--mono);color:var(--muted);border:1px solid var(--line);
+  padding:2px 7px;border-radius:99px}
+main{max-width:1180px;margin:0 auto;padding:24px;display:grid;
+  grid-template-columns:minmax(0,1fr) 380px;gap:22px}
+@media(max-width:940px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--muted);font-weight:600}
+#drop{border:1.5px dashed var(--line);border-radius:9px;padding:26px;text-align:center;
+  color:var(--muted);cursor:pointer;transition:.15s}
+#drop:hover,#drop.over{border-color:var(--accent);color:var(--ink);background:var(--panel-2)}
+.thumbs{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.thumb{position:relative;width:104px}
+.thumb img{width:104px;height:104px;object-fit:cover;border-radius:7px;border:1px solid var(--line)}
+.thumb span{display:block;font:10px var(--mono);color:var(--muted);margin-top:4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thumb button{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.72);color:#fff;
+  border:0;border-radius:5px;width:20px;height:20px;cursor:pointer;line-height:1}
+.row{display:flex;gap:9px;margin-top:14px}
+input[type=text]{flex:1;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+  padding:11px 13px;border-radius:8px;font-size:14px}
+input[type=text]:focus{outline:0;border-color:var(--accent)}
+button.go{background:var(--accent-dim);color:#fff;border:0;padding:11px 20px;
+  border-radius:8px;cursor:pointer;font-weight:600}
+button.go:disabled{opacity:.5;cursor:default}
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+.chip{font-size:12px;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
+  padding:5px 10px;border-radius:99px;cursor:pointer}
+.chip:hover{color:var(--ink);border-color:var(--accent)}
+.answer{font-size:15px;white-space:pre-wrap}
+.conf{display:flex;align-items:center;gap:9px;margin:12px 0 0}
+.bar{flex:1;height:6px;background:var(--panel-2);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok)}
+.stage{position:relative;display:inline-block;max-width:100%;margin-top:12px}
+.stage img{max-width:100%;border-radius:8px;border:1px solid var(--line);display:block}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.box{position:absolute;border:2px solid var(--accent);border-radius:3px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.55)}
+.box b{position:absolute;top:-19px;left:-2px;background:var(--accent);color:#00121e;
+  font:10px/1.5 var(--mono);padding:1px 5px;border-radius:3px;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font:12px var(--mono)}
+th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.pill{font:10px var(--mono);padding:2px 6px;border-radius:99px}
+.pill.ok{background:rgba(63,185,80,.15);color:var(--ok)}
+.pill.no{background:rgba(248,81,73,.15);color:var(--bad)}
+.note{font-size:12px;color:var(--warn);border-left:2px solid var(--warn);
+  padding:5px 9px;margin-top:7px;background:rgba(210,153,34,.07)}
+.muted{color:var(--muted)}
+.err{color:var(--bad)}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+  border-top-color:var(--accent);border-radius:50%;animation:s .7s linear infinite;
+  vertical-align:-2px;margin-right:7px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>SatQuery AI</h1>
+  <span class="tag">agentic remote-sensing VQA</span>
+  <span class="tag" id="health">checking backbone…</span>
+</header>
+
+<main>
+  <div>
+    <div class="card">
+      <h2>Imagery</h2>
+      <div id="drop">
+        Drop one or two images, or click to choose<br>
+        <span style="font-size:12px">GeoTIFF · TIFF · PNG · JPEG — two for change or optical/SAR</span>
+      </div>
+      <input type="file" id="file" accept=".tif,.tiff,.png,.jpg,.jpeg" multiple hidden>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="row">
+        <input type="text" id="q" placeholder="Ask a question about the imagery…">
+        <button class="go" id="go">Ask</button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="card" id="result" style="margin-top:18px;display:none">
+      <h2>Answer</h2>
+      <div class="answer" id="answer"></div>
+      <div class="conf">
+        <span class="muted" style="font:11px var(--mono)">confidence</span>
+        <span class="bar"><i id="confbar"></i></span>
+        <span id="confval" style="font:11px var(--mono)"></span>
+      </div>
+      <div id="notes"></div>
+      <div id="stages"></div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h2>Execution trace</h2>
+      <div id="trace" class="muted" style="font-size:13px">Ask a question to see the tool chain.</div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <h2>Tool registry</h2>
+      <div id="tools" class="muted" style="font-size:13px">loading…</div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const EXAMPLES = [
+  "Is there water in this image?",
+  "Describe this satellite image",
+  "Show me the location of the airport runway in this image",
+  "Describe the changes between these two images",
+  "Has new construction appeared between these two dates?",
+  "Compare this SAR image with the optical image",
+];
+let files = [];
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+EXAMPLES.forEach(t => {
+  const c = document.createElement('span');
+  c.className = 'chip'; c.textContent = t;
+  c.onclick = () => { $('#q').value = t; };
+  $('#chips').appendChild(c);
+});
+
+const drop = $('#drop');
+drop.onclick = () => $('#file').click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); add(e.dataTransfer.files); };
+$('#file').onchange = e => add(e.target.files);
+
+function add(list) {
+  for (const f of list) if (files.length < 2) files.push(f);
+  paint();
+}
+function paint() {
+  $('#thumbs').innerHTML = '';
+  files.forEach((f, i) => {
+    const d = document.createElement('div');
+    d.className = 'thumb';
+    const url = URL.createObjectURL(f);
+    // GeoTIFF will not render in an <img>; show a placeholder rather than a broken icon.
+    d.innerHTML = `<img src="${url}" onerror="this.replaceWith(Object.assign(document.createElement('div'),
+        {className:'ph',style:'width:104px;height:104px;border-radius:7px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font:10px var(--mono)',textContent:'GeoTIFF'}))">
+      <span>${esc(f.name)}</span><button title="remove">×</button>`;
+    d.querySelector('button').onclick = ev => { ev.stopPropagation(); files.splice(i,1); paint(); };
+    $('#thumbs').appendChild(d);
+  });
+}
+
+$('#go').onclick = ask;
+$('#q').onkeydown = e => { if (e.key === 'Enter') ask(); };
+
+async function ask() {
+  const q = $('#q').value.trim();
+  if (!q) return;
+  if (!files.length) { alert('Add at least one image.'); return; }
+  const btn = $('#go'); btn.disabled = true; btn.textContent = 'Working…';
+  $('#result').style.display = 'block';
+  $('#answer').innerHTML = '<span class="spin"></span>running the tool chain…';
+  $('#notes').innerHTML = ''; $('#stages').innerHTML = '';
+  $('#confbar').style.width = '0%'; $('#confval').textContent = '';
+
+  const fd = new FormData();
+  fd.append('q', q);
+  files.forEach(f => fd.append('images', f));
+  try {
+    const r = await fetch('/api/query', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || 'request failed');
+    render(j);
+  } catch (e) {
+    $('#answer').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Ask';
+  }
+}
+
+function render(j) {
+  $('#answer').textContent = j.text;
+  const pct = Math.round((j.confidence || 0) * 100);
+  $('#confbar').style.width = pct + '%';
+  $('#confbar').style.background = pct >= 60 ? 'var(--ok)' : pct >= 30 ? 'var(--warn)' : 'var(--bad)';
+  $('#confval').textContent = pct + '%';
+
+  const t = j.trace || {};
+  (t.rejected || []).forEach(n => {
+    const d = document.createElement('div');
+    d.className = 'note'; d.textContent = n;
+    $('#notes').appendChild(d);
+  });
+
+  // Draw evidence over the first image: boxes are normalised, heatmaps are grids.
+  const boxes = (j.evidence || []).filter(e => e.kind === 'bbox');
+  const heat = (j.evidence || []).find(e => e.kind === 'heatmap' || e.kind === 'change_map');
+  (j.images || []).slice(0, 1).forEach(src => {
+    const stage = document.createElement('div');
+    stage.className = 'stage';
+    const img = document.createElement('img');
+    img.src = src;
+    img.onload = () => {
+      if (heat) drawHeat(stage, heat.data, img);
+      boxes.forEach(b => {
+        const [x0, y0, x1, y1] = b.data;
+        const el = document.createElement('div');
+        el.className = 'box';
+        el.style.cssText = `left:${x0*100}%;top:${y0*100}%;width:${(x1-x0)*100}%;height:${(y1-y0)*100}%`;
+        el.innerHTML = `<b>${esc(b.label)}${b.score != null ? ' ' + b.score.toFixed(2) : ''}</b>`;
+        stage.appendChild(el);
+      });
+    };
+    stage.appendChild(img);
+    $('#stages').appendChild(stage);
+  });
+
+  renderTrace(t, j.images || []);
+}
+
+function drawHeat(stage, grid, img) {
+  if (!Array.isArray(grid) || !grid.length) return;
+  const h = grid.length, w = grid[0].length;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  const flat = grid.flat();
+  const lo = Math.min(...flat), hi = Math.max(...flat), span = (hi - lo) || 1;
+  const id = ctx.createImageData(w, h);
+  for (let i = 0; i < flat.length; i++) {
+    const v = (flat[i] - lo) / span;
+    id.data[i*4] = 76; id.data[i*4+1] = 194; id.data[i*4+2] = 255;
+    id.data[i*4+3] = Math.round(Math.max(0, v - .45) * 300);
+  }
+  ctx.putImageData(id, 0, 0);
+  cv.style.imageRendering = 'auto';
+  stage.appendChild(cv);
+}
+
+function renderTrace(t, images) {
+  if (!t.task) { $('#trace').textContent = 'no trace returned'; return; }
+  const rows = (t.calls || []).map(c => `
+    <tr>
+      <td>${esc(c.tool)}</td>
+      <td>${c.ms} ms</td>
+      <td><span class="pill ${c.ok ? 'ok' : 'no'}">${c.ok ? 'ok' : 'fail'}</span></td>
+    </tr>
+    ${c.error ? `<tr><td colspan="3" class="err">${esc(c.error)}</td></tr>` : ''}
+    ${c.outputs && c.outputs.dropped_params
+      ? `<tr><td colspan="3" class="muted">dropped params: ${esc(c.outputs.dropped_params.join(', '))}</td></tr>` : ''}
+  `).join('');
+
+  $('#trace').innerHTML = `
+    <table>
+      <tr><th>task</th><td colspan="2">${esc(t.task)}</td></tr>
+      <tr><th>inputs</th><td colspan="2">${esc(t.input_kind)} · ${images.length} image(s)</td></tr>
+      <tr><th>total</th><td colspan="2">${t.total_ms} ms</td></tr>
+    </table>
+    <div style="height:12px"></div>
+    <table><tr><th>tool</th><th>time</th><th>status</th></tr>${rows || '<tr><td colspan=3 class="muted">no tools ran</td></tr>'}</table>
+    ${(t.images || []).map(m => `<div class="muted" style="font:11px var(--mono);margin-top:9px">
+        ${esc(m.fmt)} ${m.width}×${m.height} · ${m.bands} band(s) · ${esc(m.modality)}${m.georeferenced ? ' · georeferenced' : ''}
+      </div>`).join('')}
+  `;
+}
+
+fetch('/api/tools').then(r => r.json()).then(list => {
+  $('#tools').innerHTML = '<table>' + list.map(t => `
+    <tr><td>${esc(t.name)}</td>
+        <td><span class="pill ${t.available ? 'ok' : 'no'}">${t.available ? 'ready' : 'unavailable'}</span></td></tr>
+    ${!t.available ? `<tr><td colspan="2" class="muted">${esc(t.reason)}</td></tr>` : ''}
+  `).join('') + '</table>';
+}).catch(() => $('#tools').textContent = 'registry unavailable');
+
+fetch('/api/health').then(r => r.json()).then(h => {
+  $('#health').textContent = h.backbone ? `${h.backbone} · ${h.device}` : 'backbone unavailable';
+}).catch(() => $('#health').textContent = 'backend offline');
+</script>
+</body>
+</html>

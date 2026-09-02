@@ -28,9 +28,27 @@ from ..schema import InputKind, Task
 # ones, because "what changed in this built-up area" is a change question that
 # also mentions land cover.
 _PATTERNS: list[tuple[Task, re.Pattern[str]]] = [
+    # Change questions split by how ambiguous their verb is.
+    #
+    # Unambiguous verbs ("shrunk", "appeared") read as change after any polar
+    # opener. Ambiguous ones do not: "What crops are grown here?" is a plain
+    # VQA question, while "Has the city grown?" is a change question -- the
+    # difference is perfect/past aspect, so those verbs require it.
+    #
+    # An explicitly temporal clause is sufficient on its own, because the
+    # statement's own example ("Has new construction appeared between these
+    # two dates?") carries no change verb at all.
     (Task.CHANGE_VQA, re.compile(
-        r"\b(has|have|did|is|are)\b.*\b(increase[sd]?|decrease[sd]?|grown|shrunk|"
-        r"expand(ed)?|reduced|changed|same|unchanged)\b", re.I)),
+        r"\b(has|have|had|did|does|do|is|are|was|were)\b.*?("
+        r"\b(increase[sd]?|decreas(e|ed|es)|shrunk|shrank|expand(ed|s)?|"
+        r"reduc(e|ed|es)|chang(e|ed|es)|unchanged|appear(ed|s)?|"
+        r"disappear(ed|s)?|emerg(e|ed|es)|vanish(ed|es)?|"
+        r"construct(ed|ion)|demolish(ed)?)\b"
+        r"|\bbetween\b.*\b(dates?|images?|acquisitions?|times?|years?)\b"
+        r"|\bsince\b\s+\d|\bcompared\s+to\b)", re.I)),
+    (Task.CHANGE_VQA, re.compile(
+        r"\b(has|have|had|did)\b.*?\b(grown|grew|new|added|removed|built|"
+        r"clear(ed)?|lost|gained|same)\b", re.I)),
     (Task.CHANGE_DESCRIPTION, re.compile(
         r"\b(what|which|where|how)\b.*\bchang(e|ed|es|ing)\b|"
         r"\bchang(e|ed|es|ing)\b.*\bbetween\b|\bcompare\b.*\bdates?\b|"
