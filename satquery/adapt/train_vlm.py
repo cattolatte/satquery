@@ -28,16 +28,14 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
-BASE = "HuggingFaceTB/SmolVLM-500M-Instruct"
+from satquery.tools.generative import BASE, IMAGE_SIZE, PROMPTS  # noqa: E402
+
 OUT = Path("checkpoints/rs_vlm")
 
-# Task-specific instructions, so one model serves three heads without the
-# prompt having to carry an explanation each time.
-PROMPTS = {
-    "vqa": "{q}\nAnswer in as few words as possible.",
-    "caption": "{q}",
-    "refer": "{q}\nRespond with a bounding box as {{<x0><y0><x1><y1>}} on a 0-99 scale.",
-}
+# BASE, IMAGE_SIZE and PROMPTS are imported from the serving module rather than
+# restated here. Training and inference preprocessing that drifts apart is a
+# silent accuracy loss, and this project has already paid for one such
+# mismatch; a shared definition makes drift impossible rather than unlikely.
 
 
 class VRSSet(Dataset):
@@ -132,7 +130,7 @@ def main() -> None:
     ap.add_argument("--accum", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--rank", type=int, default=16)
-    ap.add_argument("--image-size", type=int, default=512)
+    ap.add_argument("--image-size", type=int, default=IMAGE_SIZE)
     ap.add_argument("--save-every", type=int, default=1000)
     ap.add_argument("--out", default=str(OUT))
     a = ap.parse_args()

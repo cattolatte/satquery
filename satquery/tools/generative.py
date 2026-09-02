@@ -32,6 +32,12 @@ from .specialists import _open
 BASE = "HuggingFaceTB/SmolVLM-500M-Instruct"
 ADAPTER = "checkpoints/rs_vlm"
 
+# Must match training exactly. The processor's own default differs, so leaving
+# it unset resized images differently at inference than the weights were
+# trained on -- a silent accuracy loss that looks like a modelling problem.
+# Defined here and imported by the trainer so the two cannot drift apart.
+IMAGE_SIZE = 512
+
 PROMPTS = {
     "vqa": "{q}\nAnswer in as few words as possible.",
     "caption": "{q}",
@@ -67,11 +73,13 @@ def load() -> Generative | None:
         if (adapter / "adapter_config.json").exists():
             from peft import PeftModel
             processor = AutoProcessor.from_pretrained(str(adapter), do_image_splitting=False)
+            processor.image_processor.size = {"longest_edge": IMAGE_SIZE}
             base = AutoModelForImageTextToText.from_pretrained(BASE, torch_dtype=torch.float32)
             model = PeftModel.from_pretrained(base, str(adapter)).to(device).eval()
             return Generative(model=model, processor=processor, device=device, adapted=True)
 
         processor = AutoProcessor.from_pretrained(BASE, do_image_splitting=False)
+        processor.image_processor.size = {"longest_edge": IMAGE_SIZE}
         model = AutoModelForImageTextToText.from_pretrained(
             BASE, torch_dtype=torch.float32).to(device).eval()
         return Generative(model=model, processor=processor, device=device, adapted=False)
