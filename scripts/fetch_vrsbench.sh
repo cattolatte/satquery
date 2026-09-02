@@ -12,7 +12,11 @@ URL=https://huggingface.co/datasets/xiang709/VRSBench/resolve/main/Images_val.zi
 DEST=data/bench/vrsbench
 PART="$DEST/Images_val.zip.part"
 FULL="$DEST/Images_val.zip"
-SIZE=4169000000
+# Ask the server for the size rather than hard-coding it. A guessed threshold
+# that is even slightly high never fires, so a complete download loops forever
+# without ever being renamed into place -- which is exactly what happened.
+SIZE=$(curl -sSLI "$URL" | awk 'BEGIN{IGNORECASE=1}/^content-length:/{n=$2}END{gsub(/\r/,"",n);print n+0}')
+[ "${SIZE:-0}" -gt 0 ] || SIZE=3976656690
 
 # Abort only on a genuine stall, never on a wall clock. --max-time kills a
 # healthy transfer mid-file, and the restart does not always resume cleanly
