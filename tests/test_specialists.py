@@ -104,3 +104,41 @@ def test_referring_phrase_on_the_statements_own_query():
     in the problem statement; the trailing clause is not part of the subject."""
     assert _referring_phrase(
         "Highlight the water body referred to in the query.") == "water body"
+
+
+class TestEitherOr:
+    """Questions that name their own answer space.
+
+    "Is it a rural or an urban area" opens like a yes/no question but is not
+    one, and answering "yes" to it is always wrong. The openers and article
+    patterns vary more than the first implementation allowed.
+    """
+
+    def test_is_opener_with_both_articles(self):
+        from satquery.tools.specialists import _either_or
+        assert _either_or("Is it a rural or an urban area") == ["rural", "urban"]
+
+    def test_does_opener_with_one_article(self):
+        """VRSBench phrases it this way; the first pattern missed it entirely."""
+        from satquery.tools.specialists import _either_or
+        assert _either_or("Does the image depict a rural or urban area?") == ["rural", "urban"]
+
+    def test_trailing_head_noun_is_stripped(self):
+        from satquery.tools.specialists import _either_or
+        assert _either_or("Is the image a color or a grayscale image?") == ["color", "grayscale"]
+
+    def test_a_plain_polar_question_is_not_either_or(self):
+        from satquery.tools.specialists import _either_or
+        assert _either_or("Is there water in this image?") is None
+
+    def test_identical_alternatives_are_rejected(self):
+        from satquery.tools.specialists import _either_or
+        assert _either_or("Is it a forest or a forest?") is None
+
+
+def test_referring_phrase_strips_a_mid_sentence_imperative():
+    """The statement's cross-modal query buries the instruction mid-sentence;
+    grounding on the whole clause grounds on the instruction, not the target."""
+    assert _referring_phrase(
+        "Use the optical and SAR images together to identify built-up and "
+        "water-covered regions.") == "built-up and water-covered regions"

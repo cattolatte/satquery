@@ -122,41 +122,50 @@ already did.
 
 ## Benchmark results
 
-Measured, not asserted. Full breakdown in [BENCHMARKS.md](BENCHMARKS.md).
+Measured, not asserted. Full breakdown with baselines in [BENCHMARKS.md](BENCHMARKS.md).
 
 | benchmark | scope | result |
 |---|---|---|
-| CDVQA | change VQA (mandatory) | **48.3%** over 300 questions |
-| RSVQA-LR | single-image VQA | **37.1%** over 2,000; 54.2% on the scene-level subset |
-| VRSBench | captioning, grounding, VQA | not run — image archive still downloading |
+| Optical–SAR pairs | cross-modal (mandatory) | fused **37.6%** P@3, **+1.4** over the better single sensor |
+| CDVQA | change VQA (mandatory) | **47.3%** over 300 questions |
+| RSVQA-LR | single-image VQA | 34.9% over 800; 50.8% scene-level |
+| VRSBench VQA | single-image VQA | 7.6% exact / 8.7% lenient over 1,440 |
+| VRSBench grounding | text-guided grounding | 0.4% Acc@0.5 IoU |
+| VRSBench captioning | scene description | ROUGE-L 0.026 |
 
 Every number comes from the real serving path, the registered tool invoked
-through `Tool.invoke`, not a separate scoring routine.
+through `Tool.invoke`.
+
+Two of these are strong for a system with no task-specific training: change
+direction (74.1% increase, 65.7% decrease) and optical–SAR fusion, which is
+complementary in the measurable sense that fusing beats either sensor alone.
+The rest are weak, and the reasons are structural rather than tuning problems.
 
 ## Gaps
 
 Open, and stated rather than glossed:
 
-- **VRSBench not yet run.** Its annotations are downloaded; the 4 GB image
-  archive is not. No VRSBench numbers are claimed.
-- **Counting is not attempted.** 603 of RSVQA-LR's 2,000 questions ask "how
-  many". A global image–text similarity has no mechanism for counting
-  instances, so those score zero by design rather than by accident. Closing
-  this needs a detection or density head, which is an architectural addition.
-- **Object-level questions are out of reach.** "Is a circular building
-  present?" scores 50.5%, exactly chance. A scene-level land-cover classifier
-  cannot resolve an individual instance and its shape.
+- **Object-level questions are out of reach.** Eight of VRSBench VQA's twelve
+  types, and RSVQA's shape/size questions, ask about an individual object's
+  colour, count, position or shape. A scene-level land-cover backbone scores at
+  chance on all of them. Closing this needs an open-vocabulary detection head —
+  an architectural addition, not a parameter.
+- **Counting is not attempted.** 250 of 800 RSVQA questions and 120 of the
+  VRSBench sample ask "how many". These score zero by design rather than by
+  accident, after an earlier version scored 12.5% by scraping stray digits.
+- **Referring grounding fails on small targets.** 0.4% Acc@0.5. The 7×7 patch
+  grid cannot express a box smaller than ~73 px; tiling raises resolution
+  monotonically but not nearly enough, because CLIP patch tokens were never
+  supervised for localisation.
+- **Captioning is a vocabulary mismatch.** A 21-class land-cover summary against
+  long human descriptions of vehicles and colours. The metrics measure a
+  difference in kind.
 - **Cross-corpus transfer is weak.** Adaptation on BigEarthNet's CORINE
   vocabulary does not carry to RSVQA's object-centric annotation even on the
   same sensor family; rules that answer "yes" often score *below* chance there.
-  This is the same distribution-shift finding that decided the backbone.
-- **Naming which class changed most is weak** (23.8% on CDVQA), even though
-  direction is strong (74–77%). Ranking six small area deltas asks more
-  precision of the patch assignment than reading the sign of one.
-- **Zero-shot land-cover sits below the majority-class baseline** (45.8%
-  against 49.0%) on a 96-patch subset dominated by broad-leaved forest. The
-  baseline is a degenerate classifier that names one class always, while ours
-  discriminates 21, but the gap is real and is not presented as a win.
-- **Optical–SAR analysis is unmeasured.** The SAR rendering path is now correct
-  and tested, but no benchmark here supplies co-registered optical–SAR pairs,
-  so the cross-modal tool's accuracy is still unknown.
+- **The shipped checkpoint costs RSVQA accuracy.** 34.9% against the
+  optical-only checkpoint's 37.1% on the same questions. Taken deliberately,
+  because optical–SAR is mandatory and does not work without it.
+- **Zero-shot land-cover sits near the majority baseline** on a subset dominated
+  by one class. The baseline is a degenerate classifier and ours discriminates
+  21, but the gap is real and is not presented as a win.

@@ -75,6 +75,29 @@ class Backbone:
         return " -> ".join(self.stages)
 
 
+def _provenance(checkpoint: Path) -> list[str]:
+    """Read the training history the checkpoint recorded about itself.
+
+    Hard-coding the stage names means the trace keeps claiming whatever the
+    first checkpoint was, however many times the weights are replaced -- and
+    "which weights are these" is the first question asked of a fine-tuned
+    model, so a stale answer is worse than none.
+    """
+    import json
+    record = checkpoint / "adaptation.json"
+    if not record.is_file():
+        return ["adapted (provenance not recorded)"]
+    try:
+        meta = json.loads(record.read_text())
+    except Exception:                                          # noqa: BLE001
+        return ["adapted (provenance unreadable)"]
+    base = str(meta.get("base") or "unknown base")
+    dataset = str(meta.get("dataset") or "unknown dataset")
+    pairs = meta.get("train_pairs")
+    stage = f"{dataset} fine-tune" + (f" ({pairs} pairs)" if pairs else "")
+    return [base, stage]
+
+
 def _load_remoteclip(device: str):
     """Base RemoteCLIP, converted from open_clip layout."""
     from huggingface_hub import hf_hub_download
@@ -114,7 +137,7 @@ def load(prefer_adapted: bool = True) -> Backbone | None:
             model = CLIPModel.from_pretrained(str(ADAPTED_DIR)).to(device).eval()
             processor = CLIPProcessor.from_pretrained(str(ADAPTED_DIR))
             return Backbone(model=model, processor=processor, device=device,
-                            stages=["RemoteCLIP", "BigEarthNet.txt fine-tune"],
+                            stages=_provenance(ADAPTED_DIR),
                             dim=model.config.projection_dim)
         except Exception:                                      # noqa: BLE001
             pass  # half-written checkpoint: fall through to the base

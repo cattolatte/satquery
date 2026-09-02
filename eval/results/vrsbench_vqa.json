@@ -1,0 +1,94 @@
+{
+ "benchmark": "VRSBench VQA (stratified sample)",
+ "n": 1440,
+ "overall": 0.07569444444444444,
+ "overall_lenient": 0.08680555555555555,
+ "scene_level": 0.15833333333333333,
+ "scene_level_majority": 0.3472222222222222,
+ "by_type": {
+  "object color": {
+   "n": 120,
+   "accuracy": 0.016666666666666666,
+   "lenient": 0.016666666666666666,
+   "majority": 0.18333333333333332,
+   "scene_level": false
+  },
+  "object quantity": {
+   "n": 120,
+   "accuracy": 0.0,
+   "lenient": 0.0,
+   "majority": 0.3,
+   "scene_level": false
+  },
+  "object existence": {
+   "n": 120,
+   "accuracy": 0.20833333333333334,
+   "lenient": 0.20833333333333334,
+   "majority": 0.8333333333333334,
+   "scene_level": false
+  },
+  "object position": {
+   "n": 120,
+   "accuracy": 0.03333333333333333,
+   "lenient": 0.03333333333333333,
+   "majority": 0.24166666666666667,
+   "scene_level": false
+  },
+  "object category": {
+   "n": 120,
+   "accuracy": 0.008333333333333333,
+   "lenient": 0.016666666666666666,
+   "majority": 0.09166666666666666,
+   "scene_level": false
+  },
+  "object direction": {
+   "n": 120,
+   "accuracy": 0.016666666666666666,
+   "lenient": 0.016666666666666666,
+   "majority": 0.2833333333333333,
+   "scene_level": false
+  },
+  "object size": {
+   "n": 120,
+   "accuracy": 0.008333333333333333,
+   "lenient": 0.008333333333333333,
+   "majority": 0.275,
+   "scene_level": false
+  },
+  "object shape": {
+   "n": 120,
+   "accuracy": 0.016666666666666666,
+   "lenient": 0.016666666666666666,
+   "majority": 0.2,
+   "scene_level": false
+  },
+  "scene type": {
+   "n": 120,
+   "accuracy": 0.05,
+   "lenient": 0.14166666666666666,
+   "majority": 0.11666666666666667,
+   "scene_level": true
+  },
+  "reasoning": {
+   "n": 120,
+   "accuracy": 0.125,
+   "lenient": 0.125,
+   "majority": 0.375,
+   "scene_level": false
+  },
+  "image": {
+   "n": 120,
+   "accuracy": 0.025,
+   "lenient": 0.025,
+   "majority": 0.5166666666666667,
+   "scene_level": true
+  },
+  "rural or urban": {
+   "n": 120,
+   "accuracy": 0.4,
+   "lenient": 0.43333333333333335,
+   "majority": 0.4083333333333333,
+   "scene_level": true
+  }
+ }
+}

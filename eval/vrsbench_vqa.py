@@ -34,15 +34,27 @@ def normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", str(text).strip().lower())
 
 
+_TOP_CLASS = re.compile(r"most likely land cover:\s*([^(]+?)\s*\(", re.I)
+
+
 def decode(text: str, gold_hint: str) -> str:
-    """Reduce the tool's prose to a comparable token."""
+    """Reduce the tool's prose to the token a benchmark can compare.
+
+    The land-cover listing needs its own case: the answer is the top-ranked
+    class, and splitting on whitespace would return the literal word "most"
+    from the sentence that introduces it -- which scored every open-ended
+    question wrong regardless of whether the class was right.
+    """
     low = text.strip().lower()
     if low.startswith("yes"):
         return "yes"
     if low.startswith("no"):
         return "no"
+    ranked = _TOP_CLASS.search(low)
+    if ranked:
+        return normalise(ranked.group(1))
     # Either/or answers lead with the winning alternative.
-    lead = re.split(r"[\s—\-,.]", low, 1)[0]
+    lead = re.split(r"[\s—\-,.]", low, maxsplit=1)[0]
     return normalise(lead)
 
 
@@ -78,7 +90,22 @@ def main() -> None:
     if not ok:
         raise SystemExit(f"rs_vqa unavailable: {why}")
 
+    def lenient(pred: str, gold: str) -> bool:
+        """Partial credit for a semantically right answer worded differently.
+
+        VRSBench gold answers are free-form English while this system emits
+        CORINE class names, so "inland waters" is scored wrong against "Body of
+        water" under exact match even though it identifies the same thing.
+        Reported strictly as a secondary number: exact match is the benchmark's
+        metric and stays the headline.
+        """
+        stop = {"a", "an", "the", "of", "is", "are", "in", "on", "and", "area", "image"}
+        pw = {w for w in pred.split() if w not in stop and len(w) > 2}
+        gw = {w for w in gold.split() if w not in stop and len(w) > 2}
+        return bool(pw & gw)
+
     hits: dict[str, list[bool]] = collections.defaultdict(list)
+    soft: dict[str, list[bool]] = collections.defaultdict(list)
     golds: dict[str, list[str]] = collections.defaultdict(list)
     missing = 0
 
@@ -91,7 +118,9 @@ def main() -> None:
                          bands=3, modality=Modality.OPTICAL)
         _, text, _, _ = tool.invoke([meta], r["question"], {})
         gold = normalise(r["ground_truth"])
-        hits[r["type"]].append(decode(text, gold) == gold)
+        pred = decode(text, gold)
+        hits[r["type"]].append(pred == gold)
+        soft[r["type"]].append(pred == gold or lenient(pred, gold))
         golds[r["type"]].append(gold)
         if i % 300 == 0:
             done = sum(len(v) for v in hits.values())
@@ -100,32 +129,35 @@ def main() -> None:
     if missing:
         print(f"  ({missing} questions skipped: image not found)")
 
-    print(f"\n{'question type':<20}{'n':>6}{'ours':>9}{'majority':>10}{'delta':>8}")
+    print(f"\n{'question type':<20}{'n':>6}{'exact':>8}{'lenient':>9}{'majority':>10}")
     report, scene_hits, scene_n, scene_base = {}, 0, 0, 0
     for qtype in sorted(hits, key=lambda k: -len(hits[k])):
         v = hits[qtype]
         acc = sum(v) / len(v)
         base = collections.Counter(golds[qtype]).most_common(1)[0][1] / len(v)
-        report[qtype] = {"n": len(v), "accuracy": acc, "majority": base,
-                         "scene_level": qtype in SCENE_LEVEL}
+        sacc = sum(soft[qtype]) / len(soft[qtype])
+        report[qtype] = {"n": len(v), "accuracy": acc, "lenient": sacc,
+                         "majority": base, "scene_level": qtype in SCENE_LEVEL}
         mark = "  *" if qtype in SCENE_LEVEL else ""
-        print(f"{qtype:<20}{len(v):>6}{acc:>8.1%}{base:>10.1%}{acc-base:>+8.1%}{mark}")
+        print(f"{qtype:<20}{len(v):>6}{acc:>7.1%}{sacc:>9.1%}{base:>10.1%}{mark}")
         if qtype in SCENE_LEVEL:
             scene_hits += sum(v); scene_n += len(v)
             scene_base += collections.Counter(golds[qtype]).most_common(1)[0][1]
 
     total = sum(len(v) for v in hits.values())
     correct = sum(sum(v) for v in hits.values())
-    print(f"\n{'OVERALL':<20}{total:>6}{correct/total:>8.1%}")
+    soft_total = sum(sum(v) for v in soft.values())
+    print(f"\n{'OVERALL':<20}{total:>6}{correct/total:>7.1%}{soft_total/total:>9.1%}")
     if scene_n:
-        print(f"{'scene-level (*)':<20}{scene_n:>6}{scene_hits/scene_n:>8.1%}"
-              f"{scene_base/scene_n:>10.1%}{scene_hits/scene_n - scene_base/scene_n:>+8.1%}")
+        scene_soft = sum(sum(soft[q]) for q in SCENE_LEVEL if q in soft)
+        print(f"{'scene-level (*)':<20}{scene_n:>6}{scene_hits/scene_n:>7.1%}"
+              f"{scene_soft/scene_n:>9.1%}{scene_base/scene_n:>10.1%}")
 
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(
         {"benchmark": "VRSBench VQA (stratified sample)", "n": total,
-         "overall": correct / total,
+         "overall": correct / total, "overall_lenient": soft_total / total,
          "scene_level": (scene_hits / scene_n) if scene_n else None,
          "scene_level_majority": (scene_base / scene_n) if scene_n else None,
          "by_type": report}, indent=1))

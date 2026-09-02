@@ -170,9 +170,12 @@ _POLAR = ("is ", "are ", "does ", "do ", "would ", "has ", "have ", "can ",
 # the answer is one of the two alternatives it names. Scoring those directly is
 # both more accurate and more honest than answering "yes".
 _EITHER_OR = re.compile(
-    r"\b(?:is|are|was|were)\s+(?:it|this|the\s+\w+|there)?\s*"
-    r"an?\s+(\w[\w\s-]*?)\s+or\s+an?\s+(\w[\w\s-]*?)\s*(?:area|region|scene|zone)?\s*\??$",
-    re.I)
+    r"\b(?:is|are|was|were|does|do|did|show|shows|depicts?)\b[^?]*?"
+    # The second article is optional: "a rural or urban area" is at least as
+    # common as "a rural or an urban area", and the trailing head noun belongs
+    # to both alternatives rather than to the second one.
+    r"\ban?\s+(\w[\w\s-]*?)\s+or\s+(?:an?\s+)?(\w[\w\s-]*?)\s*"
+    r"(?:area|region|scene|zone|setting|image|photo)?\s*\??$", re.I)
 
 
 def _either_or(query: str) -> list[str] | None:
@@ -403,8 +406,14 @@ def _referring_phrase(query: str) -> str:
     m = re.search(r"<ref>(.*?)</ref>", query, re.S)
     if m:
         return m.group(1).strip()
+    # The imperative is not always at the start: "Use the optical and SAR
+    # images together to identify built-up regions" buries it mid-sentence, and
+    # feeding the whole clause to the text encoder grounds on the instruction
+    # rather than on the thing being asked for.
+    q = re.sub(r"^.*?\bto\s+(?:identify|locate|find|highlight|show|detect|mark)\s+",
+               "", query, flags=re.I)
     q = re.sub(r"^\s*(please\s+)?(highlight|locate|find|show me|point to|mark|outline|"
-               r"segment|identify|where (is|are))\s*", "", query, flags=re.I)
+               r"segment|identify|detect|where (is|are))\s*", "", q, flags=re.I)
     # "the location of the runway in this image" -> "runway". Feeding the whole
     # imperative to the text encoder buries the noun among filler tokens and
     # measurably weakens the heat map.
