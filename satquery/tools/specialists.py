@@ -333,7 +333,7 @@ class GroundingTool(_BackboneTool):
     spec = ToolSpec(
         name="rs_grounding",
         tasks={Task.GROUNDING},
-        accepts={"threshold", "top_k", "min_area"},
+        accepts={"threshold", "top_k", "min_area", "tiles"},
         needs_images=1,
         description="Text-guided region localisation from dense patch-text similarity.",
         requires=["torch", "transformers"],
@@ -342,11 +342,20 @@ class GroundingTool(_BackboneTool):
     def run(self, images, query, params):
         bb = self._bb()
         image = _open(images[0])
-        tokens, grid = patch_tokens(bb, image)
         phrase = _referring_phrase(query)
         txt = embed_texts(bb, [f"a satellite image of {phrase}"])[0]
 
-        raw = (tokens @ txt).reshape(grid, grid)
+        # Tiling raises the localisation resolution. One pass gives a 7x7 grid,
+        # which over a 512 px image is 73 px per cell -- larger than many of the
+        # objects a referring expression names, so the smallest expressible box
+        # is bigger than the target. Running the encoder over a T x T grid of
+        # crops and stitching the maps gives 7T x 7T cells for T^2 passes.
+        tiles = max(1, int(params.get("tiles", 1)))
+        if tiles > 1:
+            raw = _tiled_heat(bb, image, txt, tiles)
+        else:
+            tokens, grid = patch_tokens(bb, image)
+            raw = (tokens @ txt).reshape(grid, grid)
         # Min-max only to pick regions. It must never feed the confidence: the
         # normalised maximum is 1.0 by construction, so reporting it would make
         # every successful localisation look certain regardless of the evidence.
@@ -388,6 +397,50 @@ def _referring_phrase(query: str) -> str:
     q = re.sub(r"\s+(referred to|mentioned|described|asked about)\b.*$", "", q, flags=re.I)
     q = re.sub(r"^\s*(the|a|an|any|all)\s+", "", q, flags=re.I)
     return re.sub(r"[.?!]+$", "", q).strip() or query
+
+
+def _tiled_heat(bb: Backbone, image, txt: np.ndarray, tiles: int) -> np.ndarray:
+    """Similarity map stitched from a T x T grid of overlapping crops.
+
+    Overlapping by half a tile so an object straddling a tile boundary is whole
+    in at least one crop; the maximum is taken where crops overlap, since a
+    target seen clearly in one crop should not be diluted by a crop that only
+    caught its edge.
+    """
+    w, h = image.size
+    step_x, step_y = w / tiles, h / tiles
+    # Half-tile margin, clamped to the image.
+    mx, my = step_x / 2, step_y / 2
+
+    acc: np.ndarray | None = None
+    counts: np.ndarray | None = None
+    for ty in range(tiles):
+        for tx in range(tiles):
+            left = max(0, int(tx * step_x - mx))
+            top = max(0, int(ty * step_y - my))
+            right = min(w, int((tx + 1) * step_x + mx))
+            bottom = min(h, int((ty + 1) * step_y + my))
+            crop = image.crop((left, top, right, bottom))
+            tokens, grid = patch_tokens(bb, crop)
+            local = (tokens @ txt).reshape(grid, grid)
+
+            if acc is None:
+                size = grid * tiles
+                acc = np.full((size, size), -np.inf, dtype=np.float32)
+                counts = np.zeros((size, size), dtype=np.float32)
+            size = acc.shape[0]
+            y0 = int(round(top / h * size)); y1 = max(y0 + 1, int(round(bottom / h * size)))
+            x0 = int(round(left / w * size)); x1 = max(x0 + 1, int(round(right / w * size)))
+
+            # Nearest-neighbour resize of the local map onto its footprint.
+            yi = np.clip((np.arange(y1 - y0) * grid) // max(y1 - y0, 1), 0, grid - 1)
+            xi = np.clip((np.arange(x1 - x0) * grid) // max(x1 - x0, 1), 0, grid - 1)
+            patch = local[np.ix_(yi, xi)]
+            acc[y0:y1, x0:x1] = np.maximum(acc[y0:y1, x0:x1], patch)
+            counts[y0:y1, x0:x1] += 1
+
+    acc[~np.isfinite(acc)] = float(np.nanmin(acc[np.isfinite(acc)])) if np.isfinite(acc).any() else 0.0
+    return acc
 
 
 def _grounding_confidence(raw: np.ndarray, selected: np.ndarray) -> float:

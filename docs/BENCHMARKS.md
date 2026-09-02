@@ -77,11 +77,61 @@ object-centric annotation, even on the same sensor family. Closing this needs
 adaptation on RSVQA itself, not a better decision rule, which is why no further
 rule tuning was attempted.
 
-## VRSBench — not yet run
+## VRSBench — referring-expression grounding
 
-Annotations are downloaded (`VRSBench_EVAL_vqa.json`, `_Cap.json`,
-`_referring.json`). The 4 GB image archive has not finished downloading, so no
-VRSBench numbers are claimed.
+1,078 expressions from `omlab/VRSBench-FS` val shard 0, which packages
+VRSBench's referring task as parquet. Boxes are real pixel supervision, scored
+with Acc@0.5 IoU, the standard referring metric.
+
+| metric | value |
+|---|---|
+| Acc@0.5 IoU | **0.4%** |
+| Acc@0.25 IoU | 4.3% |
+| mean IoU | 0.035 |
+| no box produced | 0 |
+
+This is a clear negative result and the breakdown says why it is structural
+rather than a tuning problem:
+
+| target size | n | mean IoU |
+|---|---|---|
+| large (>4 patch cells) | 189 | 0.083 |
+| 1–4 cells | 333 | 0.052 |
+| sub-cell | 278 | 0.012 |
+| tiny (<1/4 cell) | 278 | 0.004 |
+
+Grounding here comes from CLIP patch tokens on a 7×7 grid. Over a 512×512 image
+that is 73 px per cell, so the smallest box the method can express is about
+73×73 — and VRSBench refers to individual vehicles, most of which are smaller
+than a single cell. Accuracy falls monotonically with target size, exactly as
+that limit predicts.
+
+Tiling was implemented to test whether resolution alone was the cause. Running
+the encoder over a T×T grid of overlapping crops gives 7T×7T cells:
+
+| tiles | passes/image | mean IoU | Acc@0.25 |
+|---|---|---|---|
+| 1 | 1 | 0.006 | 0.0% |
+| 3 | 9 | 0.019 | 1.0% |
+| 5 | 25 | 0.025 | 3.0% |
+
+Resolution is part of the story — the trend is monotonic — but four times the
+mean IoU on a base of 0.006 is still nowhere near usable. CLIP patch tokens
+were never supervised for object localisation, and no amount of tiling supplies
+supervision that was never there. Closing this needs an open-vocabulary
+detection head, which is an architectural addition rather than a parameter.
+
+`tiles` is a permitted parameter, defaulting to 1. It is worth raising for
+small targets and not worth the 25× cost for the scene-level regions the
+problem statement's own grounding example asks about ("Highlight the water body
+referred to in the query"), where the single-pass grid is already the right
+scale.
+
+### VRSBench VQA and captioning — not run
+
+Their annotations are downloaded (`VRSBench_EVAL_vqa.json`, `_Cap.json`), but
+they index into the 4 GB `Images_val.zip`, which did not finish downloading.
+No VQA or captioning numbers are claimed for VRSBench.
 
 ## Reproducing
 
