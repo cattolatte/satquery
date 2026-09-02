@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-from ..schema import Evidence, ImageMeta, Task
+from ..schema import Evidence, ImageMeta, Modality, Task
 from .backbone import Backbone, embed_images, embed_texts, load, patch_tokens
 from .base import Tool, ToolSpec
 
@@ -34,31 +34,76 @@ LAND_COVER = [
 ]
 
 
-def _open(meta: ImageMeta):
-    """Load an image as RGB for the backbone.
+def _stretch(channel: np.ndarray) -> np.ndarray:
+    """Percentile stretch one channel to [0, 1].
 
-    Sentinel-2 GeoTIFFs carry 12-13 bands; CLIP wants three. Bands 4/3/2 are
-    red/green/blue in Sentinel-2 order, so the natural-colour composite is the
-    right default — it is also what the text descriptions were written against.
+    Per channel, not over the stack. Satellite reflectance has a long tail, and
+    for SAR the polarisation channels differ in dynamic range by enough that a
+    shared stretch flattens one of them into noise.
+    """
+    channel = np.asarray(channel, dtype=np.float32)
+    mask = np.isfinite(channel)
+    if not mask.any():
+        return np.zeros_like(channel, dtype=np.float32)
+    lo, hi = np.percentile(channel[mask], [2, 98])
+    # Non-finite pixels (SAR no-data, division artefacts) are floored rather
+    # than propagated: a single NaN would otherwise poison the whole embedding.
+    out = np.where(mask, channel, lo)
+    return np.clip((out - lo) / max(hi - lo, 1e-6), 0, 1)
+
+
+def _sar_composite(bands: list[np.ndarray]) -> np.ndarray:
+    """Render SAR as three channels the way SAR is conventionally read.
+
+    Dual-pol products carry VV and VH, which describe different scattering:
+    surfaces and double bounce in VV, volume scattering in VH. Reading only the
+    first band -- as this did -- discarded VH entirely, which is most of what
+    distinguishes vegetation from built-up in radar.
+
+    The conventional false-colour composite is (VV, VH, VV/VH); the ratio is
+    what separates urban from vegetated. Amplitude is also strongly
+    right-skewed, so it goes to dB before stretching rather than after.
+    """
+    def db(x: np.ndarray) -> np.ndarray:
+        return 10.0 * np.log10(np.maximum(x.astype(np.float32), 1e-6))
+
+    if len(bands) >= 2:
+        vv, vh = db(bands[0]), db(bands[1])
+        ratio = vv - vh                        # a dB difference is the ratio
+        return np.stack([_stretch(vv), _stretch(vh), _stretch(ratio)], axis=-1)
+    grey = _stretch(db(bands[0]))
+    return np.stack([grey] * 3, axis=-1)
+
+
+def _open(meta: ImageMeta):
+    """Load an image as three channels for the backbone.
+
+    Optical: bands 4/3/2 are red/green/blue in Sentinel-2 order, so the
+    natural-colour composite is the right default -- it is also what the text
+    descriptions were written against.
+
+    SAR: natural colour is meaningless, so a polarimetric composite is built
+    instead. See `_sar_composite`.
     """
     from PIL import Image
     p = Path(meta.path)
-    if meta.fmt == "GeoTIFF":
-        import rasterio
-        with rasterio.open(p) as src:
-            if src.count >= 4:
-                arr = np.stack([src.read(4), src.read(3), src.read(2)], axis=-1)
-            elif src.count >= 3:
-                arr = np.stack([src.read(1), src.read(2), src.read(3)], axis=-1)
-            else:
-                band = src.read(1)
-                arr = np.stack([band] * 3, axis=-1)            # SAR: grey to RGB
-        # Percentile stretch. Satellite reflectance has a long tail and a raw
-        # min-max stretch leaves everything dark grey.
-        lo, hi = np.percentile(arr, [2, 98])
-        arr = np.clip((arr - lo) / max(hi - lo, 1e-6), 0, 1)
-        return Image.fromarray((arr * 255).astype(np.uint8))
-    return Image.open(p).convert("RGB")
+    if meta.fmt not in ("GeoTIFF", "TIFF"):
+        return Image.open(p).convert("RGB")
+
+    import rasterio
+    with rasterio.open(p) as src:
+        bands = [src.read(i + 1) for i in range(src.count)]
+
+    if meta.modality is Modality.SAR or (len(bands) <= 2 and meta.modality is not Modality.OPTICAL):
+        arr = _sar_composite(bands)
+    elif len(bands) >= 4:
+        arr = np.stack([_stretch(bands[3]), _stretch(bands[2]), _stretch(bands[1])], axis=-1)
+    elif len(bands) == 3:
+        arr = np.stack([_stretch(b) for b in bands], axis=-1)
+    else:
+        arr = np.stack([_stretch(bands[0])] * 3, axis=-1)
+
+    return Image.fromarray((arr * 255).astype(np.uint8))
 
 
 # Everyday words map onto CORINE class names that never contain them: nobody
