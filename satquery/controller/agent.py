@@ -118,8 +118,15 @@ class Controller:
         # detector.
         detector = self.registry.get("rs_detect")
         usable = detector is not None and detector.available()[0]
+        vlm = self.registry.get("rs_vlm")
+        vlm_ok = vlm is not None and vlm.available()[0]
 
-        if task is Task.GROUNDING:
+        if task is Task.CAPTION and vlm_ok:
+            # A generative captioner is not an improvement on the template head,
+            # it is a different capability: references average 48 words and the
+            # template emits a five-class list, so the ceiling was the format.
+            chain = [vlm]
+        elif task is Task.GROUNDING:
             # The detector localises *objects*; patch-token similarity localises
             # *land cover*. "Highlight the water body" names a region, not an
             # instance, and asking a detector for it returns whatever objects
@@ -138,6 +145,11 @@ class Controller:
             scene = self.registry.get("rs_vqa")
             if usable and is_object_level(query):
                 chain = [detector]
+            elif vlm_ok:
+                # Open-ended questions have answers the land-cover vocabulary
+                # cannot express: a third of VRSBench's gold answers are outside
+                # it at any confidence.
+                chain = [vlm]
             elif scene is not None:
                 chain = [scene]
             else:

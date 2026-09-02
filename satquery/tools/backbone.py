@@ -27,7 +27,7 @@ is what makes the registry cheap: each specialist is a head, not a model.
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -69,6 +69,11 @@ class Backbone:
     device: str
     stages: list[str]
     dim: int
+    # Text embeddings for a fixed vocabulary, cached against this model. Held
+    # on the Backbone rather than in a module-level cache so it cannot outlive
+    # the weights it was computed from -- a stale text cache after a checkpoint
+    # swap would be silently wrong rather than slow.
+    _text_cache: dict = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def name(self) -> str:
@@ -170,6 +175,49 @@ def embed_texts(bb: Backbone, texts: list[str]) -> np.ndarray:
         feats = _vec(bb.model.get_text_features(**inputs))
         feats = feats / feats.norm(dim=-1, keepdim=True)
     return feats.cpu().numpy()
+
+
+def embed_texts_cached(bb: Backbone, texts: list[str]) -> np.ndarray:
+    """L2-normalised text embeddings, computed once per vocabulary.
+
+    The class vocabulary is fixed and every scoring call re-embedded all of it:
+    21 text forward passes per query, three times over for the change tool,
+    for prompts that never vary. Caching removes that entirely and changes no
+    result, because the same text through the same weights is the same vector.
+    """
+    key = tuple(texts)
+    hit = bb._text_cache.get(key)
+    if hit is None:
+        hit = embed_texts(bb, texts)
+        bb._text_cache[key] = hit
+    return hit
+
+
+def encode_image(bb: Backbone, image) -> tuple[np.ndarray, np.ndarray, int]:
+    """Pooled embedding and dense patch tokens from ONE vision forward pass.
+
+    `embed_images` and `patch_tokens` each run the whole vision tower. Callers
+    that need both -- the change tool needs pooled features to rank a
+    vocabulary and patch features to localise -- were paying for the encoder
+    twice per image, four times for a bi-temporal pair.
+
+    Returns (pooled, patches, grid), all L2-normalised.
+    """
+    import torch
+    with torch.no_grad():
+        inputs = bb.processor(images=[image], return_tensors="pt").to(bb.device)
+        vision = bb.model.vision_model(**inputs, output_hidden_states=False)
+
+        pooled = bb.model.visual_projection(vision.pooler_output)
+        pooled = pooled / pooled.norm(dim=-1, keepdim=True)
+
+        tokens = vision.last_hidden_state[:, 1:, :]            # drop CLS
+        tokens = bb.model.vision_model.post_layernorm(tokens)
+        tokens = bb.model.visual_projection(tokens)
+        tokens = tokens / tokens.norm(dim=-1, keepdim=True)
+
+    patches = tokens[0].cpu().numpy()
+    return pooled[0].cpu().numpy(), patches, int(round(len(patches) ** 0.5))
 
 
 def patch_tokens(bb: Backbone, image) -> tuple[np.ndarray, int]:

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import io
 import json
 import re
 import tempfile
@@ -25,7 +24,6 @@ from pathlib import Path
 import pandas as pd
 
 from satquery.registry import build_controller
-from satquery.schema import ImageMeta, Modality
 
 # RSVQA-LR question families, in the order they should be tested.
 _COUNT = re.compile(r"^\s*(how many|what is the number of|what is the amount of)", re.I)

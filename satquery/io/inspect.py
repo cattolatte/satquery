@@ -21,7 +21,7 @@ GEO_EXT = {".tif", ".tiff"}
 BENCH_EXT = {".png", ".jpg", ".jpeg"}
 
 
-def _band_modality(bands: int, name: str, desc: list[str]) -> Modality:
+def _band_modality(bands: int, name: str, desc: list[str], fmt: str = "") -> Modality:
     """Guess modality from band count, filename and band descriptions.
 
     SAR products are typically 1-2 bands (amplitude, or a polarimetric pair);
@@ -38,9 +38,15 @@ def _band_modality(bands: int, name: str, desc: list[str]) -> Modality:
         return Modality.SAR
     if bands >= 3:
         return Modality.OPTICAL
-    if bands <= 2:
-        return Modality.SAR
-    return Modality.UNKNOWN
+
+    # Band count implies SAR only for geospatial products. A grayscale PNG or
+    # JPEG is an ordinary photograph -- VRSBench is full of them, and 540 of its
+    # gold answers are literally "grayscale". Reading those as radar made two
+    # plain images look like a co-registered optical-SAR pair and routed them
+    # to the cross-modal tool.
+    if fmt in ("GeoTIFF", "TIFF"):
+        return Modality.SAR if bands <= 2 else Modality.UNKNOWN
+    return Modality.OPTICAL
 
 
 def inspect_image(path: str | Path) -> ImageMeta:
@@ -72,7 +78,7 @@ def _inspect_geotiff(p: Path) -> ImageMeta:
                 acquired=(src.tags().get("TIFFTAG_DATETIME")
                           or src.tags().get("ACQUISITION_DATE")),
             )
-            meta.modality = _band_modality(src.count, p.name, desc)
+            meta.modality = _band_modality(src.count, p.name, desc, "GeoTIFF")
             if not meta.georeferenced:
                 meta.notes.append("no CRS: cannot verify spatial correspondence")
             return meta
@@ -95,7 +101,7 @@ def _inspect_plain(p: Path) -> ImageMeta:
                          notes=[f"unreadable: {e}"])
     return ImageMeta(
         path=str(p), fmt=p.suffix.lstrip(".").upper(), width=w, height=h, bands=bands,
-        modality=_band_modality(bands, p.name, []),
+        modality=_band_modality(bands, p.name, [], p.suffix.lstrip(".").upper()),
         notes=["non-geospatial format: permitted only for benchmark datasets"],
     )
 

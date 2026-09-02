@@ -26,7 +26,6 @@ import numpy as np
 import pandas as pd
 
 from satquery.registry import build_controller
-from satquery.schema import ImageMeta, Modality
 
 _PROMPT = re.compile(
     r"(?:<image>\s*)?(?:please\s+)?provide the bounding box coordinate of the region "
@@ -72,6 +71,9 @@ def main() -> None:
                     help="T x T crop grid; 1 is a single pass")
     ap.add_argument("--min-area", type=int, default=2)
     ap.add_argument("--threshold", type=float, default=0.6)
+    ap.add_argument("--tool", default="controller",
+                    choices=["controller", "rs_detect", "rs_vlm", "rs_grounding"],
+                    help="which specialist to measure; controller = real routing")
     ap.add_argument("--out", default="eval/results/vrsbench_grounding.json")
     a = ap.parse_args()
 
@@ -80,10 +82,19 @@ def main() -> None:
         df = df.head(a.limit)
     print(f"VRSBench referring grounding: {len(df)} expressions")
 
-    # Through the controller: which grounding tool serves a query is part of
-    # what is measured, since object targets and land-cover targets go to
-    # different specialists.
-    controller = build_controller()
+    # Through the controller by default: which grounding tool serves a query is
+    # part of what is measured, since object targets and land-cover targets go
+    # to different specialists. A single tool can be named instead, which is how
+    # the specialists were compared against each other rather than assumed.
+    controller = build_controller() if a.tool == "controller" else None
+    direct = None
+    if controller is None:
+        from satquery.registry import build_registry
+        direct = build_registry().get(a.tool)
+        ok, why = direct.available()
+        if not ok:
+            raise SystemExit(f"{a.tool} unavailable: {why}")
+    print(f"measuring: {a.tool}")
 
     params = {"tiles": a.tiles, "min_area": a.min_area, "threshold": a.threshold}
     print(f"params: {params}")
@@ -101,8 +112,15 @@ def main() -> None:
 
         gold = [float(x) for x in np.asarray(row.answer).ravel()[:4]]
         sentence = referring_sentence(row.problem)
-        answer = controller.run(sentence, [str(path)])
-        boxes = [e for e in answer.evidence if e.kind == "bbox"]
+        if controller is not None:
+            evidence = controller.run(sentence, [str(path)]).evidence
+        else:
+            from satquery.schema import ImageMeta, Modality
+            meta = ImageMeta(path=str(path), fmt="PNG", width=w, height=h,
+                             bands=3, modality=Modality.OPTICAL)
+            kind = {"rs_vlm": {"kind": "refer"}}.get(a.tool, {})
+            _, _, evidence, _ = direct.invoke([meta], sentence, kind)
+        boxes = [e for e in evidence if e.kind == "bbox"]
         if not boxes:
             misses += 1
             score = 0.0
@@ -139,7 +157,8 @@ def main() -> None:
         {"benchmark": "VRSBench referring grounding (omlab/VRSBench-FS val shard 0)",
          "n": len(arr), "acc50": float((arr >= 0.5).mean()),
          "acc25": float((arr >= 0.25).mean()), "mean_iou": float(arr.mean()),
-         "no_box": misses, "params": params, "by_target_size": rows}, indent=1))
+         "no_box": misses, "params": params, "tool": a.tool,
+         "by_target_size": rows}, indent=1))
     print(f"\nwrote {out}")
 
 

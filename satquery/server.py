@@ -41,6 +41,33 @@ app = FastAPI(title="SatQuery AI", version="0.1.0")
 _controller = None
 
 
+@app.on_event("startup")
+def _warm() -> None:
+    """Load the models in the background as the server comes up.
+
+    Seven tools across three backbones take about 15 seconds to load, and
+    whichever request arrives first would otherwise pay all of it -- which in a
+    demo is the first question anyone asks. A daemon thread keeps startup
+    instant while the weights come in behind it, and every loader is cached, so
+    a request arriving mid-warm simply waits for the one it needs rather than
+    loading a second copy.
+    """
+    import threading
+
+    def warm() -> None:
+        try:
+            controller()
+            registry = build_registry()
+            for entry in registry.describe():
+                tool = registry.get(entry["name"])
+                if tool is not None:
+                    tool.available()
+        except Exception:                                      # noqa: BLE001
+            pass          # a cold first request is a slow demo, not a broken one
+
+    threading.Thread(target=warm, daemon=True).start()
+
+
 def controller():
     """Built lazily so the process starts instantly and the first request pays
     the model load. Importing torch at module scope would make `--reload`

@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
 from ..schema import Evidence, ImageMeta, Modality, Task
-from .backbone import Backbone, embed_images, embed_texts, load, patch_tokens
+from .backbone import (
+    Backbone, embed_images, embed_texts, embed_texts_cached, load, patch_tokens,
+)
 from .base import Tool, ToolSpec
 
 # CORINE-derived vocabulary. BigEarthNet is labelled with these, so they are the
@@ -203,7 +204,11 @@ def _resolve_target(query: str, vocab: list[str]) -> list[str]:
         if f" {v.lower()} " in q or v.lower() in q:
             hits.append(v)
     for word, classes in _SYNONYMS.items():           # everyday synonym
-        if re.search(rf"\b{re.escape(word)}\b", q):
+        # Allow a plural: the map is keyed on singulars, and questions ask
+        # about "farmlands" and "buildings" as readily as the singular. Without
+        # this, "are there less farmlands than water areas" resolved only one
+        # side of the comparison and fell through entirely.
+        if re.search(rf"\b{re.escape(word)}e?s?\b", q):
             hits += [c for c in classes if c in vocab]
     if not hits:                                      # any content word
         for v in vocab:
@@ -216,10 +221,20 @@ def _resolve_target(query: str, vocab: list[str]) -> list[str]:
     return [h for h in hits if not (h in seen or seen.add(h))]
 
 
+# Comparing the extent of two classes ("are there more farmlands than water
+# areas") was implemented and removed. Assigning patches to classes and
+# comparing the counts is the right model of the question, and it measured
+# 39.3% over the full vocabulary and 42.9% restricted to the two classes named,
+# against a 55.4% majority baseline -- worse than guessing, in both
+# formulations. Inverting the comparison would have scored 59%, which is a
+# quirk of how this vocabulary assigns built-up patches rather than a model of
+# anything, so it was not adopted. See docs/adr/0007.
+
+
 def _score_vocab(bb: Backbone, image, vocab: list[str]) -> list[tuple[str, float]]:
     """Rank a vocabulary against one image by cosine similarity."""
     img = embed_images(bb, [image])[0]
-    txt = embed_texts(bb, [f"a satellite image of {v}" for v in vocab])
+    txt = embed_texts_cached(bb, [f"a satellite image of {v}" for v in vocab])
     sims = txt @ img
     order = np.argsort(-sims)
     return [(vocab[i], float(sims[i])) for i in order]
