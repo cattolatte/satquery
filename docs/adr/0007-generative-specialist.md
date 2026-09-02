@@ -69,6 +69,19 @@ detector, on that evidence.
 farmlands than water areas?" requires counting two classes and comparing them,
 which the generative model answers in one shot without counting either.
 
+An extent-based fix was implemented and then removed. Assigning every patch to
+its nearest class and comparing the counts is the right model of the question,
+and it measured 39.3% over the full vocabulary and 42.9% restricted to the two
+classes named, against a 55.4% majority baseline — worse than guessing, in both
+formulations. Inverting the comparison would have scored 59%, which is a fact
+about how this vocabulary assigns built-up patches rather than a model of
+anything, so it was not adopted. The regression stands unfixed and is reported
+as such.
+
+That diagnosis is itself useful: the anti-correlation says the backbone
+systematically under-assigns built-up classes on this imagery, which is a
+calibration problem worth attacking directly rather than papering over.
+
 **Counting remains weak** at 23.8%, and object direction at 10.0% is below its
 baseline. Neither is addressed by this change.
 
