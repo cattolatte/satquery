@@ -1,31 +1,36 @@
 {
  "benchmark": "VRSBench referring grounding (omlab/VRSBench-FS val shard 0)",
- "n": 60,
- "acc50": 0.2,
- "acc25": 0.21666666666666667,
- "mean_iou": 0.1699937816662196,
- "no_box": 8,
+ "n": 300,
+ "acc50": 0.19,
+ "acc25": 0.2633333333333333,
+ "mean_iou": 0.17094643737215812,
+ "no_box": 111,
  "params": {
   "tiles": 1,
   "min_area": 2,
   "threshold": 0.6
  },
- "tool": "rs_detect",
+ "tool": "controller",
  "by_target_size": {
+  "tiny (<1/4 cell)": {
+   "n": 104,
+   "mean_iou": 0.18273635071190014,
+   "acc50": 0.22115384615384615
+  },
   "sub-cell": {
-   "n": 27,
-   "mean_iou": 0.22107138868064588,
-   "acc50": 0.25925925925925924
+   "n": 91,
+   "mean_iou": 0.2023025724652288,
+   "acc50": 0.21978021978021978
   },
   "1-4 cells": {
-   "n": 17,
-   "mean_iou": 0.13232881050275822,
-   "acc50": 0.11764705882352941
+   "n": 89,
+   "mean_iou": 0.14916751591486907,
+   "acc50": 0.15730337078651685
   },
-  "tiny (<1/4 cell)": {
+  "large (>4 cells)": {
    "n": 16,
-   "mean_iou": 0.12381935169055305,
-   "acc50": 0.1875
+   "mean_iou": 0.037119232928165505,
+   "acc50": 0.0
   }
  }
 }

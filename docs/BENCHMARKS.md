@@ -3,6 +3,55 @@
 All three benchmarks the problem statement names, plus the optical–SAR pairing
 it makes mandatory.
 
+## Where the numbers stand
+
+| benchmark | scene-level only | + detector | + generative specialist |
+|---|---|---|---|
+| VRSBench VQA, overall | 7.6% | 11.5% | **36.8%** |
+| VRSBench VQA, scene-level | 15.3% | 15.3% | **67.3%** |
+| VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.217** |
+| VRSBench captioning, content recall | 0.030 | 0.030 | **0.417** |
+| VRSBench referring grounding, Acc@0.5 | 0.2% | **25.1%** | 25.1% |
+| RSVQA-LR, overall | 34.9% | 41.5% | **51.7%** |
+| RSVQA-LR, counting | not attempted | 21.2% | 23.8% |
+| CDVQA, overall | — | 47.3% | 47.3% |
+| Optical–SAR fused, P@3 | 18.9% | — | **37.6%** |
+
+Each column is a component the measurements said was missing, not a tuning
+pass. See [ADR 0006](adr/0006-instance-level-perception.md) and
+[ADR 0007](adr/0007-generative-specialist.md).
+
+## What the generative specialist changed
+
+Two causes were measured separately. A third of VRSBench's gold answers are
+outside a 21-class vocabulary at any confidence, which capped that head at
+65.5% — but the score was 11.5%, so the ceiling explained under half the gap.
+The rest was that nothing had ever been trained on these tasks: VRSBench ships
+142,390 training conversations covering exactly the three tasks it scores, and
+none had been used.
+
+Six question types now beat their own majority baselines, where previously only
+`rural or urban` came close:
+
+| type | before | after | majority |
+|---|---|---|---|
+| image | 2.5% | **85.0%** | 51.0% |
+| rural or urban | 38.3% | **77.0%** | 43.0% |
+| scene type | 5.0% | **40.0%** | 11.0% |
+| object color | 3.3% | **36.0%** | 17.0% |
+| object category | 1.7% | **30.0%** | 11.0% |
+| object shape | 15.0% | **25.0%** | 22.0% |
+
+**Grounding stays with the detector**, measured head to head on the same 300
+expressions: detector 19.0% Acc@0.5, generative model 0.7%. Box regression got
+about 6,000 of 24,000 training rows and one epoch, which is not enough to learn
+coordinates.
+
+**RSVQA comparison questions regressed**, 54.5% to 43.8%. "Are there more
+farmlands than water areas?" needs both classes counted and compared; the
+generative model answers in one shot without counting either. Reported because
+it is a real cost of the change.
+
 ## What the detector changed
 
 Every remaining weakness after the first round turned out to be one missing
