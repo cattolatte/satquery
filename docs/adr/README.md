@@ -1,0 +1,10 @@
+# Architecture decision records
+
+| # | Decision | Status |
+|---|---|---|
+| [0001](0001-agentic-controller.md) | An agentic controller over a predefined registry | accepted |
+| [0002](0002-remote-sensing-backbone.md) | Converted RemoteCLIP, fine-tuned on BigEarthNet.txt | accepted |
+| [0003](0003-confidence-and-evidence.md) | Confidence is the minimum across the chain | accepted |
+
+Each records the decision, what was measured, and what it costs — including the
+wrong turns, where those are the useful part.
