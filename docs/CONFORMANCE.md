@@ -120,17 +120,43 @@ patches and RemoteCLIP 2.1%, both far below the 49.0% majority-class baseline.
 Adaptation is what makes the system work, not a refinement on top of one that
 already did.
 
+## Benchmark results
+
+Measured, not asserted. Full breakdown in [BENCHMARKS.md](BENCHMARKS.md).
+
+| benchmark | scope | result |
+|---|---|---|
+| CDVQA | change VQA (mandatory) | **48.3%** over 300 questions |
+| RSVQA-LR | single-image VQA | **37.1%** over 2,000; 54.2% on the scene-level subset |
+| VRSBench | captioning, grounding, VQA | not run — image archive still downloading |
+
+Every number comes from the real serving path, the registered tool invoked
+through `Tool.invoke`, not a separate scoring routine.
+
 ## Gaps
 
 Open, and stated rather than glossed:
 
-- **Benchmark evaluation not yet run.** The statement names VRSBench and RSVQA
-  for single-image tasks and CDVQA for change VQA. All three are available and
-  ungated; the harness is not yet written, so no benchmark numbers are claimed.
-- **Change and cross-modal tools are untested on real pairs.** The current
-  BigEarthNet shard is single-date optical only. The tools run and are unit
-  tested, but their accuracy is unmeasured until CDVQA is wired in.
+- **VRSBench not yet run.** Its annotations are downloaded; the 4 GB image
+  archive is not. No VRSBench numbers are claimed.
+- **Counting is not attempted.** 603 of RSVQA-LR's 2,000 questions ask "how
+  many". A global image–text similarity has no mechanism for counting
+  instances, so those score zero by design rather than by accident. Closing
+  this needs a detection or density head, which is an architectural addition.
+- **Object-level questions are out of reach.** "Is a circular building
+  present?" scores 50.5%, exactly chance. A scene-level land-cover classifier
+  cannot resolve an individual instance and its shape.
+- **Cross-corpus transfer is weak.** Adaptation on BigEarthNet's CORINE
+  vocabulary does not carry to RSVQA's object-centric annotation even on the
+  same sensor family; rules that answer "yes" often score *below* chance there.
+  This is the same distribution-shift finding that decided the backbone.
+- **Naming which class changed most is weak** (23.8% on CDVQA), even though
+  direction is strong (74–77%). Ranking six small area deltas asks more
+  precision of the patch assignment than reading the sign of one.
 - **Zero-shot land-cover sits below the majority-class baseline** (45.8%
   against 49.0%) on a 96-patch subset dominated by broad-leaved forest. The
   baseline is a degenerate classifier that names one class always, while ours
   discriminates 21, but the gap is real and is not presented as a win.
+- **Optical–SAR analysis is unmeasured.** The SAR rendering path is now correct
+  and tested, but no benchmark here supplies co-registered optical–SAR pairs,
+  so the cross-modal tool's accuracy is still unknown.
