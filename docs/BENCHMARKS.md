@@ -1,7 +1,27 @@
 # Benchmark results
 
 All three benchmarks the problem statement names, plus the optical–SAR pairing
-it makes mandatory. Every number comes from the real serving path — the
+it makes mandatory.
+
+## What the detector changed
+
+Every remaining weakness after the first round turned out to be one missing
+capability: a global image–text similarity has no notion of an *instance*.
+Adding an open-vocabulary detector as a second specialist, with the controller
+choosing between the two per query, moved three benchmarks at once.
+
+| task | scene-level only | with the detector |
+|---|---|---|
+| VRSBench referring grounding, Acc@0.5 | 0.2% | **25.1%** |
+| VRSBench referring grounding, mean IoU | 0.018 | **0.216** |
+| RSVQA-LR overall | 34.9% | **41.5%** |
+| RSVQA-LR counting | not attempted | **21.2%** |
+| VRSBench VQA overall | 7.6% | **11.5%** |
+
+See [ADR 0006](adr/0006-instance-level-perception.md), including the two
+routing policies that were tried and measured worse, and the three separate
+detection thresholds — localisation wants recall, counting and existence want
+precision, and one shared value serves none of them. Every number comes from the real serving path — the
 registered tool invoked through `Tool.invoke` — not a separate scoring routine
 that could quietly differ from what the API does.
 
@@ -70,21 +90,25 @@ rejected on that held-out evidence.
 
 800 questions, same subset under both checkpoints.
 
-| question type | n | cross-modal | optical-only |
+| question type | n | with detector | scene-level only |
 |---|---|---|---|
 | comparison | 209 | 54.5% | 56.9% |
 | presence-object | 170 | 50.6% | 47.1% |
 | presence-scene | 160 | 46.2% | 56.2% |
 | rural/urban | 11 | 45.5% | 72.7% |
-| count | 250 | 0.0% | 0.0% |
-| **overall** | **800** | **34.9%** | **37.1%** |
+| count | 250 | **21.2%** | 0.0% |
+| **overall** | **800** | **41.5%** | 37.1% |
 | scene-level subset | 380 | 50.8% | 57.1% |
 
-**Counting is not attempted.** A global image–text similarity has no mechanism
-for "how many farmlands are there". An early version scored 12.5% by scraping
-stray digits out of prose like "ranks 19 of 21" — that misrepresents the system
-as partly capable when it is not capable at all. It now returns `unsupported`
-and scores zero across 250 of 800 questions.
+**Counting now works, at 21.2%.** It previously returned `unsupported` and
+scored zero, because a global image–text similarity has no mechanism for "how
+many farmlands are there". The detector counts instances above a threshold
+tuned for precision — 0.03 gives 2.5% and 0.40 gives 23.8% on a held-out half,
+because a count is scored exactly and every false positive is an error.
+
+An earlier version scored 12.5% by scraping stray digits out of prose like
+"ranks 19 of 21". That was noise presented as capability; only the leading
+token of the detector's answer is read now.
 
 **Object-level questions are out of reach.** "Is a *circular* building present?"
 scores at chance: a scene-level land-cover classifier cannot resolve an
@@ -107,7 +131,7 @@ The backbone's ranking is anti-correlated with RSVQA's notion of presence.
 | scene type | 120 | 5.0% | **14.2%** | 11.7% |
 | image | 120 | 2.5% | 2.5% | 51.7% |
 | the eight object-level types | 960 | ≤3.3% | ≤3.3% | 9–30% |
-| **overall** | **1440** | **7.6%** | **8.7%** | |
+| **overall** | **1440** | **11.5%** | **12.7%** | |
 
 This is a poor result and the table says why rather than hiding it. Eight of
 twelve types ask about an individual object's colour, count, position, size,
@@ -129,26 +153,27 @@ Fixing them took rural/urban from 5.0% to 40.0%.
 
 Referring expressions with real pixel boxes, Acc@0.5 IoU.
 
-| metric | shipped (cross-modal) | optical-only |
+| metric | with detector | patch-token only |
 |---|---|---|
-| Acc@0.5 IoU | 0.2% | 0.4% |
-| Acc@0.25 IoU | 1.8% | 4.3% |
-| mean IoU | 0.018 | 0.035 |
-| n | 400 | 1,078 |
+| Acc@0.5 IoU | **25.1%** | 0.2% |
+| Acc@0.25 IoU | **32.0%** | 1.8% |
+| mean IoU | **0.216** | 0.018 |
+| n | 800 | 400 |
 
-The shipped checkpoint is the weaker of the two here, consistent with the
-RSVQA trade-off. Both are effectively zero, so the choice between them does not
-matter for this task — the numbers are given for the shipped configuration
-rather than the more flattering one.
+The size profile also **inverted**, which is the clearest evidence the mechanism
+is the intended one. Under patch-token grounding, tiny targets scored worst
+(mean IoU 0.001) because they were smaller than a single grid cell. Under
+detection they score comparably to large ones — the resolution ceiling is gone,
+not merely raised.
 
 A clear negative result, and structural rather than a tuning problem:
 
-| target size | n | mean IoU |
-|---|---|---|
-| large (>4 patch cells) | 19 | 0.089 |
-| 1–4 cells | 150 | 0.035 |
-| sub-cell | 112 | 0.002 |
-| tiny (<¼ cell) | 119 | 0.001 |
+| target size | n | mean IoU | Acc@0.5 |
+|---|---|---|---|
+| 1–4 cells | 261 | 0.278 | 32.6% |
+| sub-cell | 218 | 0.229 | 25.7% |
+| tiny (<¼ cell) | 208 | 0.175 | 23.1% |
+| large (>4 cells) | 113 | 0.123 | 10.6% |
 
 Grounding comes from CLIP patch tokens on a 7×7 grid — 73 px per cell over a
 512 px image — while VRSBench refers to individual vehicles, most smaller than

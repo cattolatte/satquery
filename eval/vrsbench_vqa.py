@@ -20,7 +20,7 @@ import random
 import re
 from pathlib import Path
 
-from satquery.registry import build_registry
+from satquery.registry import build_controller
 from satquery.schema import ImageMeta, Modality
 
 IMAGES = Path("data/bench/vrsbench/Images_val")
@@ -85,10 +85,10 @@ def main() -> None:
     print(f"VRSBench VQA: {len(sample)} questions "
           f"(stratified, up to {a.per_type} per type, from {len(rows)})")
 
-    tool = build_registry().get("rs_vqa")
-    ok, why = tool.available()
-    if not ok:
-        raise SystemExit(f"rs_vqa unavailable: {why}")
+    # Through the controller, not a single tool: selecting between the
+    # scene-level backbone and the detector is part of what is being measured,
+    # and calling one tool directly would bypass exactly that step.
+    controller = build_controller()
 
     def lenient(pred: str, gold: str) -> bool:
         """Partial credit for a semantically right answer worded differently.
@@ -114,9 +114,7 @@ def main() -> None:
         if not path.exists():
             missing += 1
             continue
-        meta = ImageMeta(path=str(path), fmt="PNG", width=512, height=512,
-                         bands=3, modality=Modality.OPTICAL)
-        _, text, _, _ = tool.invoke([meta], r["question"], {})
+        text = controller.run(r["question"], [str(path)]).text
         gold = normalise(r["ground_truth"])
         pred = decode(text, gold)
         hits[r["type"]].append(pred == gold)
