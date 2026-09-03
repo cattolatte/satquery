@@ -158,3 +158,32 @@ def test_three_thresholds_are_separately_configurable():
     from satquery.tools.detector import DetectionTool
     for name in ("threshold", "existence_threshold", "count_threshold"):
         assert name in DetectionTool.spec.accepts
+
+
+class TestPolarPrecedence:
+    """A polar opener settles the question type before position or size.
+
+    "Is there a ship located close to the rightmost edge?" mentions a position
+    but asks yes or no, and answering "bottom-right" is wrong however correct
+    the position is. Testing position first did exactly that and produced a
+    quarter of the errors on VRSBench's largest question type.
+    """
+
+    def test_existential_with_a_position_clause_is_still_yes_no(self):
+        assert question_family(
+            "Is there a ship located close to the rightmost edge of the image?"
+        ) == "existence"
+
+    def test_polar_without_an_existential_is_still_yes_no(self):
+        """"Do the planes have multiple engines" names no "there" or "any", and
+        fell through to the referring branch, which answers with a detection
+        summary rather than yes or no."""
+        assert question_family("Do the planes appear to have multiple engines?") == "existence"
+
+    def test_wh_questions_still_win_over_the_polar_opener(self):
+        assert question_family("How many ships are there?") == "count"
+        assert question_family("What color are the vehicles?") == "colour"
+        assert question_family("What is the shape of the building?") == "shape"
+
+    def test_a_genuine_position_question_is_unaffected(self):
+        assert question_family("Where is the ship located?") == "position"

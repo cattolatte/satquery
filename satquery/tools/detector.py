@@ -250,7 +250,12 @@ def nearest_colour(rgb: tuple[float, float, float]) -> str:
 # Object-level question families. Each reduces to a property of the detected
 # instances, which is why one detector answers all of them.
 _Q_COUNT = re.compile(r"^\s*(how many|what is the (number|amount|count) of)", re.I)
-_Q_EXIST = re.compile(r"^\s*(is|are|does|do|can)\b.*\b(there|present|visible|any)\b", re.I)
+# Two forms. "Is there a ship" names its subject after an existential; "Do the
+# planes have multiple engines" does not, and was falling through to the
+# referring branch, which answers with a detection summary rather than yes or no.
+_Q_EXIST = re.compile(
+    r"^\s*(is|are|does|do|can|has|have)\b.*\b(there|present|visible|any)\b"
+    r"|^\s*(is|are|does|do|can|has|have)\b", re.I)
 _Q_POSITION = re.compile(r"\b(where|which (part|side|corner)|position|located|situated)\b", re.I)
 _Q_SIZE = re.compile(r"\b(how (large|big|small)|size of|larger|smaller)\b", re.I)
 _Q_SHAPE = re.compile(r"\bshape\b", re.I)
@@ -258,19 +263,29 @@ _Q_COLOUR = re.compile(r"\b(colou?r)\b", re.I)
 
 
 def question_family(query: str) -> str:
-    """Which object-level property a question asks about."""
+    """Which object-level property a question asks about.
+
+    A polar opener settles it before position or size are considered. "Is there
+    a ship located close to the rightmost edge?" mentions a position but asks
+    yes or no, and answering "bottom-right" is wrong however correct the
+    position is. Testing position first did exactly that, and cost a quarter of
+    the errors on VRSBench's largest question type.
+
+    The wh-questions above it stay first: "how many" and "what colour" are
+    never yes/no, whatever else they contain.
+    """
     if _Q_COUNT.search(query):
         return "count"
     if _Q_COLOUR.search(query):
         return "colour"
     if _Q_SHAPE.search(query):
         return "shape"
+    if _Q_EXIST.search(query):
+        return "existence"
     if _Q_SIZE.search(query):
         return "size"
     if _Q_POSITION.search(query):
         return "position"
-    if _Q_EXIST.search(query):
-        return "existence"
     return "referring"
 
 
