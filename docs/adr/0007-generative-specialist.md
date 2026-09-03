@@ -44,10 +44,10 @@ supervision matters more than the base model.
 
 | benchmark | before | after |
 |---|---|---|
-| VRSBench VQA, overall | 11.5% | **36.8%** |
-| VRSBench VQA, scene-level | 15.3% | **67.3%** (baseline 35.0%) |
-| VRSBench captioning, ROUGE-L | 0.026 | **0.217** |
-| VRSBench captioning, content recall | 0.030 | **0.417** |
+| VRSBench VQA, overall | 11.5% | **37.6%** |
+| VRSBench VQA, scene-level | 15.3% | **69.3%** (baseline 35.0%) |
+| VRSBench captioning, ROUGE-L | 0.026 | **0.221** |
+| VRSBench captioning, content recall | 0.030 | **0.470** |
 | RSVQA-LR, overall | 41.5% | **51.7%** |
 | RSVQA-LR, presence-scene | 46.2% | **94.6%** |
 
@@ -84,6 +84,32 @@ calibration problem worth attacking directly rather than papering over.
 
 **Counting remains weak** at 23.8%, and object direction at 10.0% is below its
 baseline. Neither is addressed by this change.
+
+## Training data was sampled wrong, and fixing it helped less than expected
+
+The first run drew 24,000 rows uniformly, which reproduces the corpus's
+distribution rather than the benchmark's. Object existence and quantity are 38%
+of VRSBench VQA and were 9% of training; object direction, the weakest type,
+had a third of its share; rural-or-urban, already answered at 77%, had two and
+a half times more than it is asked about. Separately, a quarter of the budget
+taught box regression the detector does 27 times better.
+
+A second adapter was trained on 34,185 rows sampled to the evaluation's
+proportions with grounding dropped, and both were scored on the same 1,200
+questions: 37.6% against 36.8% overall, 69.3% against 67.3% scene-level, and
+captioning content recall 0.470 against 0.439.
+
+The stratified model is adopted on those numbers. But the reasoning that
+motivated it was **not** confirmed. The rebalance existed to feed object
+existence and quantity, and neither moved -- quantity gained a point after its
+share more than tripled, existence lost one after going from 5.7% to 19.5%.
+Whatever limits those types is not example count.
+
+The gains came from the other half of the change: captioning received the
+budget freed from grounding, 3,344 rows to 9,497, and improved by the largest
+relative margin. Reallocating a wasted quarter of the run was worth more than
+rebalancing the VQA mix, and both were changed at once, so the comparison
+cannot separate them further than that.
 
 ## Consequences
 

@@ -7,10 +7,10 @@ it makes mandatory.
 
 | benchmark | scene-level only | + detector | + generative specialist |
 |---|---|---|---|
-| VRSBench VQA, overall | 7.6% | 11.5% | **36.8%** |
-| VRSBench VQA, scene-level | 15.3% | 15.3% | **67.3%** |
-| VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.217** |
-| VRSBench captioning, content recall | 0.030 | 0.030 | **0.417** |
+| VRSBench VQA, overall | 7.6% | 11.5% | **37.6%** |
+| VRSBench VQA, scene-level | 15.3% | 15.3% | **69.3%** |
+| VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.221** |
+| VRSBench captioning, content recall | 0.030 | 0.030 | **0.470** |
 | VRSBench referring grounding, Acc@0.5 | 0.2% | **25.1%** | 25.1% |
 | RSVQA-LR, overall | 34.9% | 41.5% | **51.7%** |
 | RSVQA-LR, counting | not attempted | 21.2% | 23.8% |
@@ -51,6 +51,47 @@ coordinates.
 farmlands than water areas?" needs both classes counted and compared; the
 generative model answers in one shot without counting either. Reported because
 it is a real cost of the change.
+
+## Sampling to the benchmark's shape, and what it was worth
+
+Training had been drawn uniformly, so it inherited the corpus's distribution
+rather than the evaluation's: object existence and quantity are 38% of VRSBench
+VQA and were 9% of training, while rural-or-urban had 2.5x more than it is
+asked about, and a quarter of the budget went to box regression the detector
+does 27 times better.
+
+Resampling to the evaluation's measured proportions, dropping grounding rows,
+and spending that budget on captioning instead. 34,185 rows against 24,000.
+Both adapters were then evaluated on the same 1,200 questions with the same
+seed:
+
+| | uniform | stratified | delta |
+|---|---|---|---|
+| VQA overall | 36.8% | **37.6%** | +0.8 |
+| VQA scene-level | 67.3% | **69.3%** | +2.0 |
+| scene type | 40.0% | **46.0%** | +6.0 |
+| object color | 36.0% | **39.0%** | +3.0 |
+| captioning content recall | 0.439 | **0.470** | +0.032 |
+| captioning ROUGE-L | 0.214 | **0.221** | +0.007 |
+
+The stratified model wins, and the gain is small: eight tenths of a point is
+about ten questions in twelve hundred.
+
+**The stated hypothesis did not hold.** The rebalance was motivated by object
+existence and quantity being starved, and neither moved: quantity gained one
+point after its share more than tripled, and existence *lost* one after going
+from 5.7% to 19.5%. Whatever limits those types, it is not how many examples of
+them the model saw.
+
+What did improve is traceable to the other half of the change. Captioning
+content recall rose by the largest relative margin, and captioning is what
+received the reallocated grounding budget -- 3,344 rows to 9,497. Scene type,
+the biggest VQA gain, was also among the most under-sampled.
+
+So the honest reading is that reallocating a wasted quarter of the budget was
+worth more than rebalancing the VQA mix, and the two were changed together. It
+is adopted because it measures better on identical questions, not because the
+reasoning that motivated it was confirmed.
 
 ## What the detector changed
 
