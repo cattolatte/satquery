@@ -132,6 +132,8 @@ def main() -> None:
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument("--image-size", type=int, default=IMAGE_SIZE)
     ap.add_argument("--save-every", type=int, default=1000)
+    ap.add_argument("--resume", default="",
+                    help="continue from an existing adapter instead of a fresh LoRA")
     ap.add_argument("--out", default=str(OUT))
     a = ap.parse_args()
 
@@ -148,12 +150,20 @@ def main() -> None:
     processor.image_processor.size = {"longest_edge": a.image_size}
     model = AutoModelForImageTextToText.from_pretrained(BASE, torch_dtype=torch.float32)
 
-    lora = LoraConfig(
-        r=a.rank, lora_alpha=a.rank * 2, lora_dropout=0.05, bias="none",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, lora).to(device)
+    if a.resume:
+        # Continue an existing adapter rather than starting over. A short run
+        # from scratch cannot be compared with a long one; continuing isolates
+        # what the new data adds to weights that already exist.
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, a.resume, is_trainable=True).to(device)
+        print(f"resumed from {a.resume}")
+    else:
+        lora = LoraConfig(
+            r=a.rank, lora_alpha=a.rank * 2, lora_dropout=0.05, bias="none",
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora).to(device)
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total = sum(p.numel() for p in model.parameters())
     print(f"device {device} | trainable {trainable/1e6:.1f}M of {total/1e6:.0f}M "

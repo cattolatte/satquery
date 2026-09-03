@@ -1,0 +1,94 @@
+{
+ "benchmark": "VRSBench VQA (stratified sample)",
+ "n": 360,
+ "overall": 0.38333333333333336,
+ "overall_lenient": 0.40555555555555556,
+ "scene_level": 0.7333333333333333,
+ "scene_level_majority": 0.4111111111111111,
+ "by_type": {
+  "object color": {
+   "n": 30,
+   "accuracy": 0.3333333333333333,
+   "lenient": 0.3333333333333333,
+   "majority": 0.23333333333333334,
+   "scene_level": false
+  },
+  "object quantity": {
+   "n": 30,
+   "accuracy": 0.3,
+   "lenient": 0.3,
+   "majority": 0.3333333333333333,
+   "scene_level": false
+  },
+  "object existence": {
+   "n": 30,
+   "accuracy": 0.5333333333333333,
+   "lenient": 0.5666666666666667,
+   "majority": 0.8333333333333334,
+   "scene_level": false
+  },
+  "object position": {
+   "n": 30,
+   "accuracy": 0.1,
+   "lenient": 0.13333333333333333,
+   "majority": 0.16666666666666666,
+   "scene_level": false
+  },
+  "object category": {
+   "n": 30,
+   "accuracy": 0.36666666666666664,
+   "lenient": 0.5,
+   "majority": 0.1,
+   "scene_level": false
+  },
+  "object direction": {
+   "n": 30,
+   "accuracy": 0.06666666666666667,
+   "lenient": 0.06666666666666667,
+   "majority": 0.3,
+   "scene_level": false
+  },
+  "object size": {
+   "n": 30,
+   "accuracy": 0.16666666666666666,
+   "lenient": 0.16666666666666666,
+   "majority": 0.26666666666666666,
+   "scene_level": false
+  },
+  "object shape": {
+   "n": 30,
+   "accuracy": 0.3,
+   "lenient": 0.3,
+   "majority": 0.26666666666666666,
+   "scene_level": false
+  },
+  "scene type": {
+   "n": 30,
+   "accuracy": 0.5333333333333333,
+   "lenient": 0.5666666666666667,
+   "majority": 0.2,
+   "scene_level": true
+  },
+  "reasoning": {
+   "n": 30,
+   "accuracy": 0.23333333333333334,
+   "lenient": 0.26666666666666666,
+   "majority": 0.43333333333333335,
+   "scene_level": false
+  },
+  "image": {
+   "n": 30,
+   "accuracy": 0.9,
+   "lenient": 0.9,
+   "majority": 0.5666666666666667,
+   "scene_level": true
+  },
+  "rural or urban": {
+   "n": 30,
+   "accuracy": 0.7666666666666667,
+   "lenient": 0.7666666666666667,
+   "majority": 0.4666666666666667,
+   "scene_level": true
+  }
+ }
+}
