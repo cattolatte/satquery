@@ -70,12 +70,17 @@ def build_collate(processor):
         images, prompts, fulls = [], [], []
         for r in batch:
             instruction = PROMPTS.get(r["task"], "{q}").format(q=r["question"])
-            user = [{"role": "user", "content": [{"type": "image"},
-                                                 {"type": "text", "text": instruction}]}]
+            # Rows carry either one image or a bi-temporal pair. The pair needs
+            # two image placeholders in the prompt, in order, or the processor
+            # cannot align the second one.
+            paths = r.get("images") or [r["image"]]
+            content = [{"type": "image"} for _ in paths]
+            content.append({"type": "text", "text": instruction})
+            user = [{"role": "user", "content": content}]
             prompt = processor.apply_chat_template(user, add_generation_prompt=True)
             prompts.append(prompt)
             fulls.append(prompt + " " + r["answer"] + "<end_of_utterance>")
-            images.append([Image.open(r["image"]).convert("RGB")])
+            images.append([Image.open(p).convert("RGB") for p in paths])
 
         enc = processor(text=fulls, images=images, return_tensors="pt", padding=True)
         labels = enc["input_ids"].clone()
@@ -106,10 +111,13 @@ def sample_answers(model, processor, rows, device, n: int = 24) -> float:
     hits = 0
     for r in rows[:n]:
         prompt = PROMPTS.get(r["task"], "{q}").format(q=r["question"])
-        messages = [{"role": "user", "content": [{"type": "image"},
-                                                 {"type": "text", "text": prompt}]}]
+        paths = r.get("images") or [r["image"]]
+        content = [{"type": "image"} for _ in paths]
+        content.append({"type": "text", "text": prompt})
+        messages = [{"role": "user", "content": content}]
         text = processor.apply_chat_template(messages, add_generation_prompt=True)
-        enc = processor(text=text, images=[Image.open(r["image"]).convert("RGB")],
+        enc = processor(text=text,
+                        images=[Image.open(p).convert("RGB") for p in paths],
                         return_tensors="pt").to(device)
         out = model.generate(**enc, max_new_tokens=32, do_sample=False)
         gen = processor.batch_decode(out[:, enc["input_ids"].shape[1]:],

@@ -42,6 +42,10 @@ PROMPTS = {
     "vqa": "{q}\nAnswer in as few words as possible.",
     "caption": "{q}",
     "refer": "{q}\nRespond with a bounding box as {{<x0><y0><x1><y1>}} on a 0-99 scale.",
+    # Image 1 is the earlier date and image 2 the later one; saying so in the
+    # prompt is what makes "increased" and "decreased" answerable at all.
+    "change": "Image 1 is the earlier date and image 2 the later date. {q}\n"
+              "Answer in as few words as possible.",
 }
 
 # VRSBench writes boxes as {<x0><y0><x1><y1>} on a 0-99 grid.
@@ -87,15 +91,21 @@ def load() -> Generative | None:
         return None
 
 
-def generate(gen: Generative, image, question: str, kind: str = "vqa",
+def generate(gen: Generative, images, question: str, kind: str = "vqa",
              max_new_tokens: int = 64) -> str:
+    """Answer a question about one image or a bi-temporal pair."""
     import torch
 
+    if not isinstance(images, (list, tuple)):
+        images = [images]
     prompt = PROMPTS.get(kind, "{q}").format(q=question)
-    messages = [{"role": "user", "content": [{"type": "image"},
-                                             {"type": "text", "text": prompt}]}]
+    # One placeholder per image, in order: the processor aligns them
+    # positionally, so a missing placeholder silently drops the second frame.
+    content = [{"type": "image"} for _ in images]
+    content.append({"type": "text", "text": prompt})
+    messages = [{"role": "user", "content": content}]
     text = gen.processor.apply_chat_template(messages, add_generation_prompt=True)
-    enc = gen.processor(text=text, images=[image], return_tensors="pt").to(gen.device)
+    enc = gen.processor(text=text, images=list(images), return_tensors="pt").to(gen.device)
     with torch.no_grad():
         out = gen.model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False)
     answer = gen.processor.batch_decode(
@@ -119,7 +129,8 @@ class GenerativeTool(Tool):
 
     spec = ToolSpec(
         name="rs_vlm",
-        tasks={Task.VQA, Task.CAPTION, Task.GROUNDING},
+        tasks={Task.VQA, Task.CAPTION, Task.GROUNDING,
+               Task.CHANGE_VQA, Task.CHANGE_DESCRIPTION},
         accepts={"kind", "max_new_tokens"},
         needs_images=1,
         description="Generative vision-language specialist fine-tuned on VRSBench.",
@@ -138,8 +149,9 @@ class GenerativeTool(Tool):
         if gen is None:
             return "[generative specialist unavailable]", [], 0.0
 
-        kind = str(params.get("kind", "vqa"))
-        answer = generate(gen, _open(images[0]), query, kind,
+        kind = str(params.get("kind", "change" if len(images) > 1 else "vqa"))
+        frames = [_open(m) for m in images[:2]]
+        answer = generate(gen, frames, query, kind,
                           int(params.get("max_new_tokens", 64)))
 
         evidence: list[Evidence] = []
