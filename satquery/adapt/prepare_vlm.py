@@ -29,6 +29,40 @@ from pathlib import Path
 
 TASK = re.compile(r"\[(vqa|refer|caption)\]")
 
+# VRSBench's own question taxonomy, which is also how it is scored. Training
+# followed the corpus's natural distribution and the benchmark does not: object
+# existence and quantity are 38% of the evaluation and were 9% of training,
+# while rural-or-urban had 2.5x more than it is asked about. Sampling to the
+# evaluation's shape spends the budget where the questions actually are.
+_QTYPE = [
+    ("object quantity", r"^\s*how many|number of"),
+    ("object color", r"\bcolou?r\b"),
+    ("object shape", r"\bshape\b"),
+    ("object size", r"\bhow (large|big|small)\b|\bsize\b"),
+    ("object direction", r"\bdirection\b|\bfacing\b|\boriented\b"),
+    ("object position", r"\bwhere\b|\bposition\b|\blocated\b|\bside\b"),
+    ("scene type", r"\bscene\b|\btype of (area|scene|land)\b|\bprimary\b"),
+    ("rural or urban", r"\brural\b|\burban\b"),
+    ("image", r"\bimage (quality|resolution|source|taken)\b|\bgrayscale\b"),
+    ("object existence", r"^\s*(is|are|does|do)\b"),
+]
+
+# Share of the benchmark each type accounts for, measured from its own eval
+# split rather than guessed.
+EVAL_SHARE = {
+    "object existence": 0.208, "object quantity": 0.170, "object position": 0.156,
+    "object category": 0.145, "object color": 0.095, "scene type": 0.085,
+    "object shape": 0.038, "image": 0.030, "object size": 0.027,
+    "reasoning": 0.024, "object direction": 0.013, "rural or urban": 0.008,
+}
+
+
+def question_type(query: str) -> str:
+    for name, pattern in _QTYPE:
+        if re.search(pattern, query, re.I):
+            return name
+    return "other"
+
 
 def parse(entry: dict) -> tuple[str, str, str] | None:
     """(task, question, answer) from one VRSBench conversation."""
@@ -53,13 +87,49 @@ def parse(entry: dict) -> tuple[str, str, str] | None:
     return m.group(1), question, gpt.strip()
 
 
+def _stratify(rows: list[dict], budget: int, rng: random.Random) -> list[dict]:
+    """Draw `budget` rows in the proportions the benchmark actually asks.
+
+    Sampling uniformly gives the corpus's own distribution, which is not the
+    evaluation's: object quantity is 17% of the benchmark and was 3.6% of
+    training. Types short of their quota take everything available rather than
+    being padded with duplicates, and whatever budget that frees is given back
+    to the types that still have rows.
+    """
+    pools: dict[str, list] = {}
+    for row in rows:
+        pools.setdefault(question_type(row["question"]), []).append(row)
+
+    picked, shortfall = [], 0
+    for qtype, share in EVAL_SHARE.items():
+        want = int(budget * share)
+        have = pools.get(qtype, [])
+        take = min(want, len(have))
+        picked.extend(have[:take])
+        pools[qtype] = have[take:]
+        shortfall += want - take
+
+    # Redistribute what the thin types could not fill.
+    leftovers = [r for pool in pools.values() for r in pool]
+    rng.shuffle(leftovers)
+    picked.extend(leftovers[:shortfall])
+    rng.shuffle(picked)
+    return picked
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="data/bench/vrsbench/VRSBench_train.json")
     ap.add_argument("--images", default="data/bench/vrsbench/Images_train")
     ap.add_argument("--out", default="data/adapt_vlm")
     ap.add_argument("--per-task", type=int, default=0,
-                    help="cap per task, 0 = all; sampling stays balanced")
+                    help="cap per task, 0 = all")
+    ap.add_argument("--vqa", type=int, default=0,
+                    help="VQA rows to draw, stratified to the eval's type mix")
+    ap.add_argument("--caption", type=int, default=0, help="caption rows to draw")
+    ap.add_argument("--refer", type=int, default=0,
+                    help="grounding rows; 0 is deliberate -- the detector serves "
+                         "grounding at 19%% Acc@0.5 against this model's 0.7%%")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
 
@@ -84,7 +154,16 @@ def main() -> None:
     out_rows = []
     for task, group in by_task.items():
         rng.shuffle(group)
-        out_rows.extend(group[: a.per_task] if a.per_task else group)
+        if task == "vqa" and a.vqa:
+            out_rows.extend(_stratify(group, a.vqa, rng))
+        elif task == "caption" and a.caption:
+            out_rows.extend(group[: a.caption])
+        elif task == "refer":
+            out_rows.extend(group[: a.refer])
+        elif a.vqa or a.caption:
+            continue
+        else:
+            out_rows.extend(group[: a.per_task] if a.per_task else group)
     rng.shuffle(out_rows)
 
     out = Path(a.out)
