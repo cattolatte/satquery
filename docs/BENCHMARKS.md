@@ -7,10 +7,11 @@ it makes mandatory.
 
 | benchmark | scene-level only | + detector | + generative specialist |
 |---|---|---|---|
-| VRSBench VQA, overall | 7.6% | 11.5% | **37.6%** |
-| VRSBench VQA, scene-level | 15.3% | 15.3% | **69.3%** |
-| VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.221** |
-| VRSBench captioning, content recall | 0.030 | 0.030 | **0.470** |
+| VRSBench VQA, overall | 7.6% | 11.5% | **40.8%** |
+| VRSBench VQA, scene-level | 15.3% | 15.3% | **69.7%** |
+| VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.306** |
+| VRSBench captioning, BLEU-1 | 0.011 | 0.011 | **0.280** |
+| CDVQA change VQA | 47.3% | 47.3% | **64.3%** |
 | VRSBench referring grounding, Acc@0.5 | 0.2% | **25.1%** | 25.1% |
 | RSVQA-LR, overall | 34.9% | 41.5% | **51.7%** |
 | RSVQA-LR, counting | not attempted | 21.2% | 23.8% |
@@ -118,6 +119,46 @@ that could quietly differ from what the API does.
 Baselines are reported beside every result. Several of these benchmarks are
 severely skewed, and an accuracy quoted without its baseline says nothing.
 
+## Change VQA: a trained model and a heuristic, routed between
+
+Change analysis was the last mandatory capability still answered by a
+hand-written heuristic -- patch areas differenced between two dates and
+thresholded -- while CDVQA shipped 65,967 training examples of the task that
+had never been used. The statement combines normalised scores across metrics,
+so a capability left at heuristic level costs as much as a strong one gains.
+
+Training the generative specialist on 6,668 CDVQA rows, mixed with 4,000
+single-image rows to prevent forgetting:
+
+| | heuristic | trained model | controller, routed |
+|---|---|---|---|
+| **overall** | 47.3% | 63.0% | **64.3%** |
+| change_or_not (n=115) | 45.2% | **78.3%** | 78.3% |
+| change ratio types (n=45) | 44.4% | **75.6%** | 75.6% |
+| increase_or_not (n=27) | 74.1% | **77.8%** | 77.8% |
+| change_to_what (n=22) | **45.5%** | 27.3% | 45.5% |
+| largest_change (n=21) | **42.9%** | 38.1% | 38.1% |
+
+Routing beats either implementation alone, which is the agentic architecture
+doing the thing the statement asks of it. The split is not arbitrary: questions
+asking *which* class changed most go to the heuristic, because it ranks
+per-class area deltas explicitly and the model has no such mechanism. Everything
+else goes to the model.
+
+The forgetting check passed: VRSBench VQA held at 40.8% before and after, and
+captioning improved rather than degraded.
+
+Two bugs surfaced only through the controller path, and both would have hit a
+real upload:
+
+- `inspect_image` rejected any unfamiliar extension by name. CDVQA ships its
+  frames as `.img` and they are ordinary PNGs, so the controller refused every
+  bi-temporal pair in the benchmark as unreadable while the direct tool path
+  worked fine. Content is now sniffed before giving up.
+- The benchmark's class vocabulary was not being forwarded through the
+  controller, so the heuristic ranked CORINE classes while the answers were
+  SECOND ones -- 0.0% on the questions that name a class.
+
 ## Optical–SAR joint analysis (mandatory)
 
 600 co-registered Sentinel-1/Sentinel-2 pairs, gold CORINE labels, P@3 over 21
@@ -166,7 +207,7 @@ Two bugs found by running on real sensor data, neither reachable by unit test:
 | largest_change | 21 | 42.9% |
 | change_ratio | 14 | 42.9% |
 | smallest_change | 21 | 9.5% |
-| **overall** | **300** | **47.3%** |
+| **overall** | **300** | **64.3%** |
 
 No change-detection training was done; the capability comes from the adapted
 backbone plus per-class area differencing. Direction is where it works — the

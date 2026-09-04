@@ -57,6 +57,16 @@ def inspect_image(path: str | Path) -> ImageMeta:
         return _inspect_geotiff(p)
     if ext in BENCH_EXT:
         return _inspect_plain(p)
+
+    # An unfamiliar extension is not the same as an unreadable file. CDVQA
+    # ships its frames as ".img" and they are ordinary PNGs; rejecting them on
+    # the name meant the controller refused every bi-temporal pair in the
+    # benchmark as unreadable, and would refuse an upload named the same way.
+    # Sniff the content before giving up, and record what the name claimed.
+    meta = _inspect_plain(p)
+    if meta.width:
+        meta.notes.append(f"extension {ext!r} not recognised; identified by content")
+        return meta
     return ImageMeta(str(p), ext.lstrip(".") or "unknown", 0, 0, 0,
                      notes=[f"unsupported extension {ext!r}"])
 

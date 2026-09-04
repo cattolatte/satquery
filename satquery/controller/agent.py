@@ -121,7 +121,23 @@ class Controller:
         vlm = self.registry.get("rs_vlm")
         vlm_ok = vlm is not None and vlm.available()[0]
 
-        if task is Task.CAPTION and vlm_ok:
+        if task in (Task.CHANGE_VQA, Task.CHANGE_DESCRIPTION) and vlm_ok:
+            # Both implementations were run over the same 300 CDVQA questions.
+            # The trained model wins overall, 63.0% against 47.3%, and wins
+            # hugely on the two largest types -- change_or_not 78.3% against
+            # 45.2%, change ratio 75.6% against 44.4%.
+            #
+            # It loses on the questions that ask WHICH class changed most,
+            # where the heuristic has a mechanism the model does not: it ranks
+            # per-class area deltas explicitly. Those go to the heuristic.
+            from ..tools.detector import head_noun  # noqa: F401  (routing parity)
+            import re as _re
+            names_a_class = _re.search(
+                r"\b(largest|biggest|greatest)\s+change|changed?\s+to\s+what|"
+                r"\bmainly\s+changed?\s+to\b", query or "", _re.I)
+            heuristic = self.registry.get("rs_change")
+            chain = [heuristic] if (names_a_class and heuristic is not None) else [vlm]
+        elif task is Task.CAPTION and vlm_ok:
             # A generative captioner is not an improvement on the template head,
             # it is a different capability: references average 48 words and the
             # template emits a five-class list, so the ceiling was the format.

@@ -115,7 +115,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="data/bench/cdvqa/x")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--tool", default="rs_change", choices=["rs_change", "rs_vlm"],
+    ap.add_argument("--tool", default="rs_change",
+                    choices=["rs_change", "rs_vlm", "controller"],
                     help="heuristic area differencing, or the trained model")
     ap.add_argument("--out", default="eval/results/cdvqa.json")
     a = ap.parse_args()
@@ -125,10 +126,16 @@ def main() -> None:
         samples = samples[: a.limit]
     print(f"CDVQA: {len(samples)} questions")
 
-    tool = build_registry().get(a.tool)
-    ok, why = tool.available()
-    if not ok:
-        raise SystemExit(f"{a.tool} unavailable: {why}")
+    controller = None
+    if a.tool == "controller":
+        from satquery.registry import build_controller
+        controller = build_controller()
+        tool = None
+    else:
+        tool = build_registry().get(a.tool)
+        ok, why = tool.available()
+        if not ok:
+            raise SystemExit(f"{a.tool} unavailable: {why}")
     print(f"measuring: {a.tool}")
 
     # delta=0 and a high class count so the asked-about class always has a
@@ -150,7 +157,19 @@ def main() -> None:
         metas = [ImageMeta(path=str(p), fmt="PNG", width=w, height=h,
                            bands=3, modality=Modality.OPTICAL) for p in pair]
 
-        if a.tool == "rs_vlm":
+        if controller is not None:
+            # The benchmark's own class vocabulary has to reach the tool. The
+            # controller forwards permitted parameters, and without them the
+            # heuristic ranks CORINE classes while the answers are SECOND ones.
+            answer = controller.run(question, [str(p) for p in pair], params)
+            text = answer.text
+            served = answer.trace.calls[0].tool if answer.trace.calls else ""
+            if served == "rs_vlm":
+                pred = re.split(r"[\s,.]", text.strip(), maxsplit=1)[0].strip().lower()
+            else:
+                pred = answer_from(answer.evidence, text, qtype,
+                                   subject_of(question), question)
+        elif a.tool == "rs_vlm":
             # The trained model answers in CDVQA's own vocabulary, so its
             # leading token is the answer -- no decoding from evidence.
             _, text, _, _ = tool.invoke(metas, question, {"kind": "change"})
