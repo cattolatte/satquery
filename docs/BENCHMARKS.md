@@ -11,11 +11,10 @@ it makes mandatory.
 | VRSBench VQA, scene-level | 15.3% | 15.3% | **69.7%** |
 | VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.306** |
 | VRSBench captioning, BLEU-1 | 0.011 | 0.011 | **0.280** |
-| CDVQA change VQA | 47.3% | 47.3% | **64.3%** |
+| CDVQA change VQA (routed) | 47.3% | 47.3% | **64.3%** |
 | VRSBench referring grounding, Acc@0.5 | 0.2% | **25.1%** | 25.1% |
 | RSVQA-LR, overall | 34.9% | 41.5% | **51.7%** |
 | RSVQA-LR, counting | not attempted | 21.2% | 23.8% |
-| CDVQA, overall | — | 47.3% | 47.3% |
 | Optical–SAR fused, P@3 | 18.9% | — | **37.6%** |
 
 Each column is a component the measurements said was missing, not a tuning

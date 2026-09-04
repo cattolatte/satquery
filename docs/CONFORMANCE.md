@@ -33,7 +33,7 @@ scene appears in both halves:
 > additionally implement either captioning/scene description or text-guided
 > region grounding."
 
-Met, with both rather than either: `VQATool`, `CaptionTool`, `GroundingTool`.
+Met, with both rather than either, and by more than one specialist each: `VQATool` and `GenerativeTool` for VQA, `CaptionTool` and `GenerativeTool` for captioning, `GroundingTool` and `DetectionTool` for grounding. The controller selects between them per query.
 
 > "Change description or change-based visual question answering from a
 > bi-temporal image pair shall be mandatory. A spatial change map may also be
@@ -105,7 +105,7 @@ Met: `satquery/server.py` + `web/index.html`.
 |---|---|
 | Input upload and compatibility checking | met |
 | A remote-sensing-adapted vision-language component | met, measured above |
-| Specialist tools for VQA, captioning or grounding, change, optical–SAR | met, five tools |
+| Specialist tools for VQA, captioning or grounding, change, optical–SAR | met, seven tools |
 | An agentic controller for routing, execution, integration | met |
 | Visual evidence | met — boxes, heat maps, change maps |
 | Confidence information | met — per-tool and aggregate |
@@ -127,11 +127,11 @@ Measured, not asserted. Full breakdown with baselines in [BENCHMARKS.md](BENCHMA
 | benchmark | scope | result |
 |---|---|---|
 | Optical–SAR pairs | cross-modal (mandatory) | fused **37.6%** P@3, **+1.4** over the better single sensor |
-| CDVQA | change VQA (mandatory) | **47.3%** over 300 questions |
-| RSVQA-LR | single-image VQA | **41.5%** over 800; counting **21.2%** |
-| VRSBench VQA | single-image VQA | **11.5%** exact / 12.7% lenient over 1,440 |
+| CDVQA | change VQA (mandatory) | **64.3%** over 300 questions |
+| RSVQA-LR | single-image VQA | **51.7%** over 600; counting **23.8%** |
+| VRSBench VQA | single-image VQA | **40.8%** exact / 43.7% lenient over 1,200 |
 | VRSBench grounding | text-guided grounding | **25.1%** Acc@0.5 IoU |
-| VRSBench captioning | scene description | ROUGE-L 0.026 |
+| VRSBench captioning | scene description | ROUGE-L **0.306**, BLEU-1 0.280 |
 
 Every number comes from the real serving path, the registered tool invoked
 through `Tool.invoke`.
