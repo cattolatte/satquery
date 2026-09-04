@@ -29,23 +29,10 @@ from pathlib import Path
 
 TASK = re.compile(r"\[(vqa|refer|caption)\]")
 
-# VRSBench's own question taxonomy, which is also how it is scored. Training
-# followed the corpus's natural distribution and the benchmark does not: object
-# existence and quantity are 38% of the evaluation and were 9% of training,
-# while rural-or-urban had 2.5x more than it is asked about. Sampling to the
-# evaluation's shape spends the budget where the questions actually are.
-_QTYPE = [
-    ("object quantity", r"^\s*how many|number of"),
-    ("object color", r"\bcolou?r\b"),
-    ("object shape", r"\bshape\b"),
-    ("object size", r"\bhow (large|big|small)\b|\bsize\b"),
-    ("object direction", r"\bdirection\b|\bfacing\b|\boriented\b"),
-    ("object position", r"\bwhere\b|\bposition\b|\blocated\b|\bside\b"),
-    ("scene type", r"\bscene\b|\btype of (area|scene|land)\b|\bprimary\b"),
-    ("rural or urban", r"\brural\b|\burban\b"),
-    ("image", r"\bimage (quality|resolution|source|taken)\b|\bgrayscale\b"),
-    ("object existence", r"^\s*(is|are|does|do)\b"),
-]
+# The question taxonomy lives with the serving code and is imported here, so
+# the vocabulary built from training data is keyed exactly the way inference
+# looks it up.
+from satquery.tools.generative import question_type  # noqa: E402
 
 # Share of the benchmark each type accounts for, measured from its own eval
 # split rather than guessed.
@@ -55,13 +42,6 @@ EVAL_SHARE = {
     "object shape": 0.038, "image": 0.030, "object size": 0.027,
     "reasoning": 0.024, "object direction": 0.013, "rural or urban": 0.008,
 }
-
-
-def question_type(query: str) -> str:
-    for name, pattern in _QTYPE:
-        if re.search(pattern, query, re.I):
-            return name
-    return "other"
 
 
 def parse(entry: dict) -> tuple[str, str, str] | None:

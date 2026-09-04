@@ -21,9 +21,12 @@ around it.
 from __future__ import annotations
 
 import functools
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
+
+import numpy as np
 
 from ..schema import Evidence, ImageMeta, Task
 from .base import Tool, ToolSpec
@@ -50,6 +53,99 @@ PROMPTS = {
 
 # VRSBench writes boxes as {<x0><y0><x1><y1>} on a 0-99 grid.
 _BOX = re.compile(r"<(\d{1,2})><(\d{1,2})><(\d{1,2})><(\d{1,2})>")
+
+# VRSBench's question taxonomy, defined here on the serving side and imported by
+# the data preparation, so the two cannot drift the way the prompts once did.
+_QTYPE = [
+    ("object quantity", r"^\s*how many|number of"),
+    ("object color", r"\bcolou?r\b"),
+    ("object shape", r"\bshape\b"),
+    ("object size", r"\bhow (large|big|small)\b|\bsize\b"),
+    ("object direction", r"\bdirection\b|\bfacing\b|\boriented\b"),
+    ("object position", r"\bwhere\b|\bposition\b|\blocated\b|\bside\b"),
+    ("scene type", r"\bscene\b|\btype of (area|scene|land)\b|\bprimary\b"),
+    ("rural or urban", r"\brural\b|\burban\b"),
+    ("image", r"\bimage (quality|resolution|source|taken)\b|\bgrayscale\b"),
+    ("object existence", r"^\s*(is|are|does|do)\b"),
+]
+
+
+def question_type(query: str) -> str:
+    """Which of VRSBench's question families a query belongs to."""
+    for name, pattern in _QTYPE:
+        if re.search(pattern, query, re.I):
+            return name
+    return "other"
+
+
+@functools.lru_cache(maxsize=1)
+def answer_vocab() -> dict[str, list[str]]:
+    """Candidate answers per question type, learned from the training split.
+
+    Empty if the file is absent, which disables constrained decoding rather
+    than failing -- a base model with no adapter has no vocabulary to constrain
+    to, and free generation is the right fallback.
+    """
+    from pathlib import Path
+    path = Path(ADAPTER) / "answer_vocab.json"
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text()).get("vocab", {})
+    except Exception:                                          # noqa: BLE001
+        return {}
+
+
+def score_candidates(gen: Generative, images, question: str,
+                     candidates: list[str], kind: str = "vqa") -> list[tuple[str, float]]:
+    """Rank candidate answers by the model's own likelihood, best first.
+
+    Free generation is scored on exact string match, so an answer that is right
+    but differently worded earns nothing -- object category was 28% exact
+    against 50% when near-misses are allowed. Choosing among the answers the
+    corpus actually uses converts that difference into score without changing
+    what the model knows.
+
+    Length-normalised, otherwise short answers win on token count alone.
+    """
+    import torch
+
+    if not isinstance(images, (list, tuple)):
+        images = [images]
+    prompt = PROMPTS.get(kind, "{q}").format(q=question)
+    content = [{"type": "image"} for _ in images]
+    content.append({"type": "text", "text": prompt})
+    text = gen.processor.apply_chat_template(
+        [{"role": "user", "content": content}], add_generation_prompt=True)
+
+    # The prompt's length must be measured AFTER the processor expands the
+    # image placeholder into its token run. Tokenising the text alone
+    # undercounts by that whole span, which masks the wrong positions and
+    # scores image tokens instead of the answer -- every candidate then comes
+    # back at roughly the same implausible logprob.
+    prompt_len = gen.processor(
+        text=[text], images=[list(images)], return_tensors="pt"
+    )["input_ids"].shape[1]
+
+    scored: list[tuple[str, float]] = []
+    for start in range(0, len(candidates), 8):
+        batch = candidates[start:start + 8]
+        texts = [text + " " + c for c in batch]
+        enc = gen.processor(text=texts, images=[list(images)] * len(batch),
+                            return_tensors="pt", padding=True).to(gen.device)
+        base = prompt_len
+        with torch.no_grad():
+            logits = gen.model(**enc).logits.float()
+        logprobs = torch.log_softmax(logits[:, :-1], dim=-1)
+        target = enc["input_ids"][:, 1:]
+        token_lp = logprobs.gather(2, target.unsqueeze(-1)).squeeze(-1)
+        mask = enc["attention_mask"][:, 1:].clone()
+        mask[:, : max(base - 1, 0)] = 0            # score the answer only
+        total = (token_lp * mask).sum(dim=1)
+        length = mask.sum(dim=1).clamp(min=1)
+        for c, lp in zip(batch, (total / length).tolist()):
+            scored.append((c, lp))
+    return sorted(scored, key=lambda kv: -kv[1])
 
 
 @dataclass
@@ -131,7 +227,7 @@ class GenerativeTool(Tool):
         name="rs_vlm",
         tasks={Task.VQA, Task.CAPTION, Task.GROUNDING,
                Task.CHANGE_VQA, Task.CHANGE_DESCRIPTION},
-        accepts={"kind", "max_new_tokens"},
+        accepts={"kind", "max_new_tokens", "constrain"},
         needs_images=1,
         description="Generative vision-language specialist fine-tuned on VRSBench.",
         requires=["torch", "transformers"],
@@ -151,6 +247,31 @@ class GenerativeTool(Tool):
 
         kind = str(params.get("kind", "change" if len(images) > 1 else "vqa"))
         frames = [_open(m) for m in images[:2]]
+
+        # Constrained decoding: choose among the answers the corpus uses
+        # instead of generating freely. Off by default, because it measured
+        # worse -- 52.3% against 55.2% on the same 1,200 questions, with object
+        # shape down fourteen points. The premise was that the exact/lenient
+        # gap was recoverable format loss; it is not. The model was fine-tuned
+        # on this corpus and already generates in its vocabulary, so forcing a
+        # choice from a fixed top-24 list trades a contextually right answer
+        # that is outside the list for a frequent one inside it.
+        #
+        # Kept as a permitted parameter rather than deleted: the machinery is
+        # sound and would help a model that had not been fine-tuned on the
+        # answer distribution.
+        vocab = answer_vocab() if params.get("constrain", False) else {}
+        candidates = vocab.get(question_type(query), []) if kind == "vqa" else []
+        if len(candidates) >= 2:
+            ranked = score_candidates(gen, frames, query, candidates, kind)
+            best, margin = ranked[0][0], ranked[0][1] - ranked[1][1]
+            evidence = [Evidence("label", c, "candidate", float(lp))
+                        for c, lp in ranked[:5]]
+            # Margin between the top two, squashed: a near-tie among candidates
+            # is a guess however confident the decoder looks.
+            conf = float(np.clip(0.35 + 2.0 * margin, 0.15, 0.95))
+            return best, evidence, conf
+
         answer = generate(gen, frames, query, kind,
                           int(params.get("max_new_tokens", 64)))
 
