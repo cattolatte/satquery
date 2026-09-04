@@ -82,6 +82,31 @@ _ALLOWED: dict[InputKind, set[Task]] = {
 _NEEDS_PAIR = {Task.CHANGE_DESCRIPTION, Task.CHANGE_VQA, Task.CROSS_MODAL}
 
 
+# A referring expression is often just a noun phrase: "The large yellow vehicle
+# situated closest to the green area." There is no interrogative and no
+# imperative to match on, and VRSBench's grounding split is phrased exactly this
+# way. Treating it as a question sent it to VQA, which answers in words and
+# produces no box at all.
+_INTERROGATIVE = re.compile(
+    r"^\s*(what|which|where|when|why|how|who|is|are|was|were|do|does|did|"
+    r"can|could|has|have|had|will|would|should)\b|\?\s*$", re.I)
+_IMPERATIVE = re.compile(
+    r"^\s*(please\s+)?(describe|caption|summari[sz]e|highlight|locate|find|"
+    r"show|point|mark|outline|segment|identify|detect|compare|use|tell|give|"
+    r"provide|list|count)\b", re.I)
+
+
+def _is_referring_phrase(query: str) -> bool:
+    """A declarative noun phrase naming a thing, rather than asking about it."""
+    q = (query or "").strip()
+    if not q or len(q.split()) > 40:
+        return False
+    if _INTERROGATIVE.search(q) or _IMPERATIVE.search(q):
+        return False
+    # Must actually name something, not just be a fragment.
+    return bool(re.match(r"^\s*(the|a|an|one|two|this|that|these|those)\b", q, re.I))
+
+
 def classify(query: str) -> Task:
     """Best task for this query, ignoring what images are available.
 
@@ -95,6 +120,8 @@ def classify(query: str) -> Task:
     for task, pattern in _PATTERNS:
         if pattern.search(q):
             return task
+    if _is_referring_phrase(q):
+        return Task.GROUNDING
     return Task.VQA
 
 

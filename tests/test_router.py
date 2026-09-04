@@ -145,3 +145,37 @@ class TestProblemStatementQueries:
         question about the same scene is change VQA."""
         assert classify("Did the forest area change between the two dates?") is Task.CHANGE_VQA
         assert classify("What changed between the two dates?") is Task.CHANGE_DESCRIPTION
+
+
+class TestReferringPhrases:
+    """A bare noun phrase is a referring expression, not a question.
+
+    VRSBench's grounding split is phrased this way -- "The large yellow vehicle
+    situated closest to the green area." -- with no interrogative and no
+    imperative to match on. Classifying it as VQA sent it to a tool that
+    answers in words and produces no box, which scored 0.0% on a benchmark
+    that had previously scored 25.1% only because object-level VQA happened to
+    be served by the detector.
+    """
+
+    def test_bare_noun_phrase_is_grounding(self):
+        assert classify(
+            "The large yellow vehicle situated closest to the green area."
+        ) is Task.GROUNDING
+
+    def test_noun_phrase_with_a_position_clause(self):
+        assert classify(
+            "The small dark-colored vehicle located at the top-right corner."
+        ) is Task.GROUNDING
+
+    def test_questions_are_not_referring_phrases(self):
+        assert classify("Is there a ship in this image?") is Task.VQA
+        assert classify("How many ships are there?") is Task.VQA
+        assert classify("What color are the vehicles?") is Task.VQA
+
+    def test_imperatives_keep_their_own_task(self):
+        assert classify("Describe this satellite image") is Task.CAPTION
+        assert classify("Highlight the water body referred to in the query.") is Task.GROUNDING
+
+    def test_a_fragment_without_a_determiner_is_not_a_reference(self):
+        assert classify("water") is Task.VQA
