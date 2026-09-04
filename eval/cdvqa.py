@@ -115,6 +115,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="data/bench/cdvqa/x")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--tool", default="rs_change", choices=["rs_change", "rs_vlm"],
+                    help="heuristic area differencing, or the trained model")
     ap.add_argument("--out", default="eval/results/cdvqa.json")
     a = ap.parse_args()
 
@@ -123,10 +125,11 @@ def main() -> None:
         samples = samples[: a.limit]
     print(f"CDVQA: {len(samples)} questions")
 
-    tool = build_registry().get("rs_change")
+    tool = build_registry().get(a.tool)
     ok, why = tool.available()
     if not ok:
-        raise SystemExit(f"rs_change unavailable: {why}")
+        raise SystemExit(f"{a.tool} unavailable: {why}")
+    print(f"measuring: {a.tool}")
 
     # delta=0 and a high class count so the asked-about class always has a
     # reported delta, even when three others moved more.
@@ -147,8 +150,15 @@ def main() -> None:
         metas = [ImageMeta(path=str(p), fmt="PNG", width=w, height=h,
                            bands=3, modality=Modality.OPTICAL) for p in pair]
 
-        _, text, ev, _ = tool.invoke(metas, question, params)
-        pred = answer_from(ev, text, qtype, subject_of(question), question)
+        if a.tool == "rs_vlm":
+            # The trained model answers in CDVQA's own vocabulary, so its
+            # leading token is the answer -- no decoding from evidence.
+            _, text, _, _ = tool.invoke(metas, question, {"kind": "change"})
+            pred = re.split(r"[\s,.]", text.strip(), maxsplit=1)[0].strip().lower()
+            pred = {"yes.": "yes", "no.": "no"}.get(pred, pred)
+        else:
+            _, text, ev, _ = tool.invoke(metas, question, params)
+            pred = answer_from(ev, text, qtype, subject_of(question), question)
         per_type[qtype].append(pred == gold)
 
         if i % 100 == 0:
@@ -169,8 +179,8 @@ def main() -> None:
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"benchmark": "CDVQA (ljx620/CDVQA test shards 0-2)",
-                               "n": total, "overall": correct / total,
-                               "by_type": rows}, indent=1))
+                               "tool": a.tool, "n": total,
+                               "overall": correct / total, "by_type": rows}, indent=1))
     print(f"\nwrote {out}")
 
 
