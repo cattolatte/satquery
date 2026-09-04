@@ -122,14 +122,17 @@ already did.
 
 ## Benchmark results
 
+![Each mandatory capability against its own reference point](figures/capabilities.png)
+
+
 Measured, not asserted. Full breakdown with baselines in [BENCHMARKS.md](BENCHMARKS.md).
 
 | benchmark | scope | result |
 |---|---|---|
 | Optical–SAR pairs | cross-modal (mandatory) | fused **37.6%** P@3, **+1.4** over the better single sensor |
 | CDVQA | change VQA (mandatory) | **64.3%** over 300 questions |
-| RSVQA-LR | single-image VQA | **51.7%** over 600; counting **23.8%** |
-| VRSBench VQA | single-image VQA | **40.8%** exact / 43.7% lenient over 1,200 |
+| RSVQA-LR | single-image VQA | **51.2%** over 600; scene-level 70.6% |
+| VRSBench VQA | single-image VQA | **55.2%** exact / 59.2% lenient over 1,200 |
 | VRSBench grounding | text-guided grounding | **25.1%** Acc@0.5 IoU |
 | VRSBench captioning | scene description | ROUGE-L **0.306**, BLEU-1 0.280 |
 
@@ -146,6 +149,8 @@ The rest are weak, and the reasons are structural rather than tuning problems.
 The graded set is Cartosat-2S optical and RISAT SAR — sub-metre against the
 10 m/px Sentinel-2 this was adapted on, which looked like the same distribution
 shift that has caught this project at every previous stage.
+
+![Optical-SAR is invariant to apparent resolution](figures/resolution.png)
 
 Tested by changing apparent resolution across an eightfold range while holding
 footprint and labels fixed: P@3 is 33.1% at 60 px, 120 px and 480 px alike.

@@ -98,7 +98,6 @@ def main() -> None:
     factors = [float(f) for f in a.factors.split(",")]
     sizes = [int(x) for x in a.sizes.split(",")]
     scores: dict[float, list[float]] = collections.defaultdict(list)
-    survived: dict[float, int] = collections.defaultdict(int)
     used = 0
 
     for row in rows:

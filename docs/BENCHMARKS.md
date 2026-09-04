@@ -5,10 +5,18 @@ it makes mandatory.
 
 ## Where the numbers stand
 
+![Each mandatory capability against its own reference point](figures/capabilities.png)
+
+Every bar is measured on held-out data through the real serving path. The dot
+is the reference each result has to beat: a majority baseline for the VQA
+benchmarks, the hand-written heuristic for change, patch-token grounding for
+localisation, and the better single sensor for fusion.
+
+
 | benchmark | scene-level only | + detector | + generative specialist |
 |---|---|---|---|
-| VRSBench VQA, overall | 7.6% | 11.5% | **40.8%** |
-| VRSBench VQA, scene-level | 15.3% | 15.3% | **69.7%** |
+| VRSBench VQA, overall | 7.6% | 11.5% | **55.2%** |
+| VRSBench VQA, scene-level | 15.3% | 15.3% | **71.7%** |
 | VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.306** |
 | VRSBench captioning, BLEU-1 | 0.011 | 0.011 | **0.280** |
 | CDVQA change VQA (routed) | 47.3% | 47.3% | **64.3%** |
@@ -17,9 +25,19 @@ it makes mandatory.
 | RSVQA-LR, counting | not attempted | 21.2% | 23.8% |
 | Optical–SAR fused, P@3 | 18.9% | — | **37.6%** |
 
-Each column is a component the measurements said was missing, not a tuning
+![VRSBench VQA over the components that were added](figures/vqa_progression.png)
+
+Each step is a component the measurements said was missing, not a tuning
 pass. See [ADR 0006](adr/0006-instance-level-perception.md) and
 [ADR 0007](adr/0007-generative-specialist.md).
+
+## Every question type now beats its baseline
+
+![VRSBench VQA: every question type beats its baseline](figures/vqa_by_type.png)
+
+Twelve of twelve, against eight before the routing was corrected. The two that
+crossed last were `object direction` and `object category`, which remain the
+weakest in absolute terms.
 
 ## What the generative specialist changed
 
