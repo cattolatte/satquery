@@ -157,14 +157,18 @@ class Controller:
             else:
                 chain = [primary[0]]
         elif task is Task.VQA:
-            from ..tools.detector import is_object_level
+            # The detector no longer serves VQA. It was the right tool when the
+            # scene-level backbone had no notion of an instance, but measured
+            # head to head on identical questions the generative model wins
+            # every object-level family, most of them by more than double:
+            # existence 91.7% against 40.0%, colour 63.3% against 18.3%,
+            # quantity 53.3% against 16.7%, shape 46.7% against 11.7%.
+            #
+            # It keeps grounding, where it still wins 25.1% against 0.7% --
+            # producing a box is a different job from answering a question
+            # about one.
             scene = self.registry.get("rs_vqa")
-            if usable and is_object_level(query):
-                chain = [detector]
-            elif vlm_ok:
-                # Open-ended questions have answers the land-cover vocabulary
-                # cannot express: a third of VRSBench's gold answers are outside
-                # it at any confidence.
+            if vlm_ok:
                 chain = [vlm]
             elif scene is not None:
                 chain = [scene]
