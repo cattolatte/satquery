@@ -141,6 +141,30 @@ direction (74.1% increase, 65.7% decrease) and optical–SAR fusion, which is
 complementary in the measurable sense that fusing beats either sensor alone.
 The rest are weak, and the reasons are structural rather than tuning problems.
 
+## Resolution is not the ISRO risk
+
+The graded set is Cartosat-2S optical and RISAT SAR — sub-metre against the
+10 m/px Sentinel-2 this was adapted on, which looked like the same distribution
+shift that has caught this project at every previous stage.
+
+Tested by changing apparent resolution across an eightfold range while holding
+footprint and labels fixed: P@3 is 33.1% at 60 px, 120 px and 480 px alike.
+Identical to three figures, which is what the architecture predicts — the
+processor resamples every input to 224×224, so apparent resolution is
+normalised away before the encoder sees it.
+
+A first version of that experiment cropped instead of rescaling and reported a
+collapse from 33.1% to 7.8%, concluding the model was resolution-sensitive.
+That was an artefact: cropping to a sixteenth of the area also invalidates
+labels that describe the whole patch. The corrected experiment is in
+`eval/crossmodal_robustness.py`, which keeps the confounded variant alongside
+the valid one so the contrast is visible.
+
+What remains genuinely untested is sensor character — RISAT's speckle,
+incidence angle and polarimetry against Sentinel-1's — and scene content at a
+much smaller ground footprint. Neither is testable without the data, and
+neither is claimed either way.
+
 ## Gaps
 
 Open, and stated rather than glossed:
