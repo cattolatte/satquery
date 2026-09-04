@@ -20,7 +20,7 @@ localisation, and the better single sensor for fusion.
 | VRSBench captioning, ROUGE-L | 0.026 | 0.026 | **0.306** |
 | VRSBench captioning, BLEU-1 | 0.011 | 0.011 | **0.280** |
 | CDVQA change VQA (routed) | 47.3% | 47.3% | **64.3%** |
-| VRSBench referring grounding, Acc@0.5 | 0.2% | **25.1%** | 25.1% |
+| VRSBench referring grounding, Acc@0.5 | 0.2% | 25.1% | **28.0%** |
 | RSVQA-LR, overall | 34.9% | 41.5% | **51.7%** |
 | RSVQA-LR, counting | not attempted | 21.2% | 23.8% |
 | Optical–SAR fused, P@3 | 18.9% | — | **37.6%** |
@@ -135,6 +135,29 @@ that could quietly differ from what the API does.
 
 Baselines are reported beside every result. Several of these benchmarks are
 severely skewed, and an accuracy quoted without its baseline says nothing.
+
+## Grounding: trained into the model, and it did not take
+
+The generative model was trained on 15,199 VRSBench referring rows -- the
+34,538 available had never been used, while grounding was the weakest
+capability at 25.1%. It did not work: the model grounds at 1.0% Acc@0.5 against
+the detector's 25.1%, and VQA was unchanged at 55.3% against 55.2%. Box
+regression is evidently not something a 500M model picks up from 15k examples
+alongside three other tasks.
+
+The attempt was still worth running, because it exposed a router bug worth more
+than the training would have been. VRSBench phrases its referring targets as
+noun phrases -- "The large yellow vehicle situated closest to the green area."
+-- with no interrogative and no imperative, so they were classified as VQA.
+
+That had been harmless by accident: object-level VQA was served by the
+detector, which emits boxes, so the benchmark scored through a path answering
+the wrong task. Routing VQA to the generative model removed the accident and
+grounding fell to 0.0%, which is how it surfaced. Classified correctly,
+grounding reaches **28.0%** against the 25.1% it had, with the share of
+expressions producing no box falling from 24% to 14%.
+
+A number that survives only by coincidence is one refactor away from zero.
 
 ## Change VQA: a trained model and a heuristic, routed between
 

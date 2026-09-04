@@ -1,0 +1,94 @@
+{
+ "benchmark": "VRSBench VQA (stratified sample)",
+ "n": 1200,
+ "overall": 0.5533333333333333,
+ "overall_lenient": 0.6,
+ "scene_level": 0.7166666666666667,
+ "scene_level_majority": 0.35,
+ "by_type": {
+  "object color": {
+   "n": 100,
+   "accuracy": 0.6,
+   "lenient": 0.66,
+   "majority": 0.17,
+   "scene_level": false
+  },
+  "object quantity": {
+   "n": 100,
+   "accuracy": 0.5,
+   "lenient": 0.5,
+   "majority": 0.3,
+   "scene_level": false
+  },
+  "object existence": {
+   "n": 100,
+   "accuracy": 0.88,
+   "lenient": 0.89,
+   "majority": 0.83,
+   "scene_level": false
+  },
+  "object position": {
+   "n": 100,
+   "accuracy": 0.37,
+   "lenient": 0.45,
+   "majority": 0.26,
+   "scene_level": false
+  },
+  "object category": {
+   "n": 100,
+   "accuracy": 0.26,
+   "lenient": 0.49,
+   "majority": 0.11,
+   "scene_level": false
+  },
+  "object direction": {
+   "n": 100,
+   "accuracy": 0.27,
+   "lenient": 0.27,
+   "majority": 0.25,
+   "scene_level": false
+  },
+  "object size": {
+   "n": 100,
+   "accuracy": 0.5,
+   "lenient": 0.52,
+   "majority": 0.26,
+   "scene_level": false
+  },
+  "object shape": {
+   "n": 100,
+   "accuracy": 0.55,
+   "lenient": 0.56,
+   "majority": 0.22,
+   "scene_level": false
+  },
+  "scene type": {
+   "n": 100,
+   "accuracy": 0.51,
+   "lenient": 0.64,
+   "majority": 0.11,
+   "scene_level": true
+  },
+  "reasoning": {
+   "n": 100,
+   "accuracy": 0.56,
+   "lenient": 0.56,
+   "majority": 0.38,
+   "scene_level": false
+  },
+  "image": {
+   "n": 100,
+   "accuracy": 0.85,
+   "lenient": 0.87,
+   "majority": 0.51,
+   "scene_level": true
+  },
+  "rural or urban": {
+   "n": 100,
+   "accuracy": 0.79,
+   "lenient": 0.79,
+   "majority": 0.43,
+   "scene_level": true
+  }
+ }
+}

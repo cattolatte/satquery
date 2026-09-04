@@ -133,7 +133,7 @@ Measured, not asserted. Full breakdown with baselines in [BENCHMARKS.md](BENCHMA
 | CDVQA | change VQA (mandatory) | **64.3%** over 300 questions |
 | RSVQA-LR | single-image VQA | **51.2%** over 600; scene-level 70.6% |
 | VRSBench VQA | single-image VQA | **55.2%** exact / 59.2% lenient over 1,200 |
-| VRSBench grounding | text-guided grounding | **25.1%** Acc@0.5 IoU |
+| VRSBench grounding | text-guided grounding | **28.0%** Acc@0.5 IoU |
 | VRSBench captioning | scene description | ROUGE-L **0.306**, BLEU-1 0.280 |
 
 Every number comes from the real serving path, the registered tool invoked
