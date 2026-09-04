@@ -168,6 +168,18 @@ class Controller:
             # producing a box is a different job from answering a question
             # about one.
             scene = self.registry.get("rs_vqa")
+            # Counting was tried as a two-tool ensemble and removed. The model
+            # wins it on VRSBench, 53.3% against 16.7%, because it trained on
+            # those objects; the detector wins on RSVQA, 23.8% against 10.4%,
+            # because there a count of zero is frequently the right answer and
+            # it is the only one that can establish absence. No rule on the
+            # subject noun separates the two cases, and running both changed
+            # neither benchmark -- 55.2% and 51.2% either way -- because the
+            # detector returns zero on both corpora and the fusion fell through
+            # to the model regardless.
+            #
+            # So counting goes to the model with the rest, and its corpus
+            # dependence is recorded rather than papered over.
             if vlm_ok:
                 chain = [vlm]
             elif scene is not None:
@@ -187,10 +199,17 @@ class Controller:
 
     @staticmethod
     def _fuse(texts: list[str], task: Task) -> str:
+        """Combine the chain's outputs into one answer.
+
+        A concatenation, because a chain contributes different kinds of
+        evidence about the same scene rather than competing answers to one
+        question.
+        """
         if not texts:
             return "No tool produced an answer."
         if len(texts) == 1:
             return texts[0]
+
         return "\n\n".join(texts)
 
     @staticmethod

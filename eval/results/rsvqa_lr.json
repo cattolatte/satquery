@@ -1,27 +1,27 @@
 {
  "benchmark": "RSVQA-LR (dmarsili/RSVQA-LR-2k validation)",
  "n": 600,
- "overall": 0.5166666666666667,
- "scene_level": 0.648936170212766,
+ "overall": 0.5116666666666667,
+ "scene_level": 0.7056737588652482,
  "by_type": {
   "count": {
    "n": 193,
-   "accuracy": 0.23834196891191708,
+   "accuracy": 0.10362694300518134,
    "unparsed": 0
   },
   "comparison": {
    "n": 162,
-   "accuracy": 0.4382716049382716,
+   "accuracy": 0.5061728395061729,
    "unparsed": 0
   },
   "presence-object": {
    "n": 125,
-   "accuracy": 0.648,
+   "accuracy": 0.704,
    "unparsed": 0
   },
   "presence-scene": {
    "n": 112,
-   "accuracy": 0.9464285714285714,
+   "accuracy": 0.9910714285714286,
    "unparsed": 0
   },
   "rural/urban": {

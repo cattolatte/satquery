@@ -41,7 +41,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from satquery.schema import Evidence, ImageMeta, Modality
+from satquery.schema import ImageMeta, Modality
 from satquery.tools.specialists import LAND_COVER
 
 
@@ -79,7 +79,6 @@ def main() -> None:
     ap.add_argument("--out", default="eval/results/crossmodal_robustness.json")
     a = ap.parse_args()
 
-    from PIL import Image
     from satquery.tools.backbone import embed_texts_cached, load, patch_tokens
     from satquery.tools.specialists import _open
 
