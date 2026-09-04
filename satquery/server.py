@@ -35,7 +35,13 @@ UPLOADS.mkdir(parents=True, exist_ok=True)
 # bi-temporal pairs and optical/SAR pairs, both of which are exactly two.
 MAX_IMAGES = 2
 MAX_BYTES = 64 * 1024 * 1024
-ALLOWED_SUFFIXES = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+
+# Extensions we expect. An unfamiliar one is not rejected outright -- CDVQA
+# names ordinary PNGs ".img", and the inspector identifies files by content --
+# but anything that cannot be decoded as an image is refused after saving.
+# Checking the content is strictly stronger than checking the name: a ".png"
+# full of garbage passed the old allowlist and fails this.
+KNOWN_SUFFIXES = {".tif", ".tiff", ".png", ".jpg", ".jpeg", ".img"}
 
 app = FastAPI(title="SatQuery AI", version="0.1.0")
 _controller = None
@@ -120,14 +126,19 @@ async def query(q: str = Form(...), images: list[UploadFile] = File(default=[]))
     saved: list[str] = []
     for upload in images:
         suffix = Path(upload.filename or "image.png").suffix.lower()
-        if suffix not in ALLOWED_SUFFIXES:
-            raise HTTPException(422, f"unsupported file type: {suffix}")
-        target = batch / f"{len(saved)}{suffix}"
+        target = batch / f"{len(saved)}{suffix or '.png'}"
         with target.open("wb") as fh:
             shutil.copyfileobj(upload.file, fh, length=1024 * 1024)
         if target.stat().st_size > MAX_BYTES:
             target.unlink()
             raise HTTPException(413, f"{upload.filename} exceeds {MAX_BYTES // 2**20} MB")
+
+        from .io.inspect import inspect_image
+        if not inspect_image(str(target)).width:
+            target.unlink()
+            hint = "" if suffix in KNOWN_SUFFIXES else f" (extension {suffix!r})"
+            raise HTTPException(
+                422, f"{upload.filename}: not a readable image{hint}")
         saved.append(str(target))
 
     answer = controller().run(q, saved)

@@ -77,3 +77,28 @@ class TestSelfContained:
             {"kind": "bbox", "data": [0.1, 0.1, 0.5, 0.5], "label": "ship", "score": 0.9}
         ]), [str(IMAGE)])
         assert 'class="box"' in html and "ship" in html
+
+
+class TestUploadValidation:
+    """Uploads are validated by content, not by filename extension.
+
+    The extension allowlist and the inspector had drifted apart: the inspector
+    identified files by content while the upload gate rejected unfamiliar names,
+    so CDVQA's ".img" frames -- ordinary PNGs -- were refused by the API and
+    accepted everywhere else. Checking content is also strictly stronger: a
+    ".png" full of garbage passed the old allowlist.
+    """
+
+    def test_garbage_named_png_is_refused(self, tmp_path):
+        from satquery.io.inspect import inspect_image
+        path = Path(tmp_path) / "bad.png"
+        path.write_bytes(b"not an image")
+        assert inspect_image(str(path)).width == 0
+
+    def test_png_content_named_img_is_accepted(self, tmp_path):
+        import pytest as _pytest
+        Image = _pytest.importorskip("PIL.Image")
+        from satquery.io.inspect import inspect_image
+        path = Path(tmp_path) / "frame.img"
+        Image.new("RGB", (48, 48)).save(path, format="PNG")
+        assert inspect_image(str(path)).width == 48

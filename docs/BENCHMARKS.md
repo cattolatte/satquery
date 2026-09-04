@@ -140,10 +140,14 @@ single-image rows to prevent forgetting:
 | largest_change (n=21) | **42.9%** | 38.1% | 38.1% |
 
 Routing beats either implementation alone, which is the agentic architecture
-doing the thing the statement asks of it. The split is not arbitrary: questions
-asking *which* class changed most go to the heuristic, because it ranks
+doing the thing the statement asks of it. The split is not arbitrary: a question
+phrased as "what did X mainly change to" goes to the heuristic, because it ranks
 per-class area deltas explicitly and the model has no such mechanism. Everything
 else goes to the model.
+
+`largest_change` is left with the model even though the heuristic scores higher
+on it, 42.9% against 38.1%. That is one question in twenty-one, and routing on
+a one-sample difference is fitting noise rather than modelling anything.
 
 The forgetting check passed: VRSBench VQA held at 40.8% before and after, and
 captioning improved rather than degraded.
