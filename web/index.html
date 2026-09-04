@@ -76,7 +76,8 @@ th{color:var(--muted);font-weight:500}
 <header>
   <h1>SatQuery AI</h1>
   <span class="tag">agentic remote-sensing VQA</span>
-  <span class="tag" id="health">checking backbone…</span>
+  <span class="tag" id="health">loading models…</span>
+  <span class="tag" id="health2"></span>
 </header>
 
 <main>
@@ -126,13 +127,19 @@ th{color:var(--muted);font-weight:500}
 </main>
 
 <script>
+// The statement's own representative queries first, then the capabilities the
+// measurements say are strongest, so a first click lands on something that
+// works rather than on the weakest corner of the system.
 const EXAMPLES = [
-  "Is there water in this image?",
-  "Describe this satellite image",
-  "Show me the location of the airport runway in this image",
-  "Describe the changes between these two images",
-  "Has new construction appeared between these two dates?",
-  "Compare this SAR image with the optical image",
+  "Describe the land-cover and major objects visible in this image.",
+  "Is there a ship in this image?",
+  "How many vehicles are in this image?",
+  "What colour are the large vehicles?",
+  "Is it a rural or an urban area?",
+  "Highlight the water body referred to in the query.",
+  "What changed between these two dates, and where did the change occur?",
+  "Has the built-up area increased, decreased, or remained unchanged?",
+  "Use the optical and SAR images together to identify built-up regions.",
 ];
 let files = [];
 
@@ -301,7 +308,9 @@ fetch('/api/tools').then(r => r.json()).then(list => {
 }).catch(() => $('#tools').textContent = 'registry unavailable');
 
 fetch('/api/health').then(r => r.json()).then(h => {
-  $('#health').textContent = h.backbone ? `${h.backbone} · ${h.device}` : 'backbone unavailable';
+  const parts = [h.generative, h.detector, h.backbone].filter(Boolean);
+  $('#health').textContent = parts.slice(0, 2).join('  ·  ') || 'no models loaded';
+  $('#health2').textContent = h.device ? `${h.device}` : '';
 }).catch(() => $('#health').textContent = 'backend offline');
 </script>
 </body>

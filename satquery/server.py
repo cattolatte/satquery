@@ -190,12 +190,43 @@ def image(batch: str, name: str) -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict:
-    from .tools.backbone import load
-    bb = load()
-    return {"ok": True,
-            "backbone": bb.name if bb else None,
-            "device": bb.device if bb else None}
+    """What is actually loaded and answering.
+
+    Reports every model, not just the CLIP backbone. The generative specialist
+    answers most queries now, and a header advertising only the land-cover
+    encoder describes a system that no longer exists.
+    """
+    from .tools.backbone import load as load_backbone
+    from .tools.detector import load as load_detector
+    from .tools.generative import load as load_generative
+
+    bb = load_backbone()
+    gen = load_generative()
+    det = load_detector()
+    return {
+        "ok": True,
+        "device": bb.device if bb else (gen.device if gen else None),
+        "backbone": bb.name if bb else None,
+        "generative": ("SmolVLM-500M + VRSBench/CDVQA adapter" if gen and gen.adapted
+                       else "SmolVLM-500M (base)" if gen else None),
+        "detector": "OWLv2" if det else None,
+    }
+
+
+class _NoCacheStatic(StaticFiles):
+    """Serve the page without caching it.
+
+    The browser held a stale copy across a redeploy, showing an old header and
+    old example queries while the API underneath had changed. On a demo machine
+    that reads as a broken build, and the file is a few kilobytes -- there is
+    nothing to gain by caching it.
+    """
+
+    def file_response(self, *args, **kwargs):                  # noqa: D102
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        return response
 
 
 if WEB.is_dir():
-    app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
+    app.mount("/", _NoCacheStatic(directory=WEB, html=True), name="web")
