@@ -83,6 +83,23 @@ into the trace.
 
 ## Status
 
-Early. The controller, router, registry and input inspection are built and
-tested. Specialist models and the web interface are next — see
-[the roadmap](docs/ROADMAP.md).
+All mandatory scope is built and measured on the benchmarks the problem
+statement names. Every number in [Benchmarks](docs/BENCHMARKS.md) comes from
+held-out data through the real serving path, reported beside the reference it
+has to beat.
+
+| benchmark | result | reference |
+|---|---|---|
+| VRSBench VQA, overall | **55.2%** | 7.6% scene-level only |
+| VRSBench captioning, ROUGE-L | **0.306** | 0.026 |
+| VRSBench referring grounding, Acc@0.5 | **28.0%** | 0.2% patch-token |
+| CDVQA change VQA, routed | **64.3%** | 47.3% heuristic |
+| RSVQA-LR, overall | **51.7%** | 34.9% |
+| Optical–SAR fused, P@3 | **37.6%** | 18.9% better single sensor |
+
+Twelve of twelve VRSBench question types beat their own majority baseline.
+173 tests, no network or weights required.
+
+What is open, and what regressed, is in [the roadmap](docs/ROADMAP.md) and
+[Benchmarks](docs/BENCHMARKS.md) — including RSVQA comparison questions, which
+fell 54.5% → 43.8% when the generative specialist was adopted.

@@ -13,24 +13,35 @@ the problem statement actually scores.
 - Web application returning answer, confidence, visual evidence, and the full
   execution trace on every request.
 - Self-contained downloadable reports, HTML and JSON.
-- 49 tests, no network or weights required.
+- 173 tests, no network or weights required.
 
 ## Open, in priority order
 
-### 1. Benchmark evaluation — highest value
+### ~~1. Benchmark evaluation~~ — done
 
-The statement names the benchmarks it will score against: VRSBench and RSVQA
-for single-image captioning, grounding, and VQA; CDVQA for change VQA. All
-three are available and ungated on HuggingFace.
+All three named benchmarks are now run and reported in
+[BENCHMARKS.md](BENCHMARKS.md): VRSBench (VQA, captioning, referring
+grounding), RSVQA-LR, and CDVQA for change VQA, plus the optical–SAR pairing
+the statement makes mandatory. Every number comes from the real serving path.
 
-No benchmark numbers are claimed anywhere in this repo until this is run. It is
-the single largest gap between "works" and "demonstrably works".
+What this surfaced, and what is now open in its place:
 
-### 2. Bi-temporal data
+- **RSVQA comparison questions regressed**, 54.5% → 43.8%. Counting two classes
+  and comparing them is compositional; the generative model answers in one shot
+  without counting either. Needs a count-then-compare path, not more training.
+- **Counting is weak** at 23.8% on RSVQA-LR. Partly a resolution limit at 10 m
+  GSD, partly a model limit, and the two have not been separated.
+- **RSVQA presence adaptation does not transfer.** The adopted decision rule
+  beats a 50.4% majority baseline by five points, and two candidate rules scored
+  *below* chance — the backbone's ranking is anti-correlated with RSVQA's notion
+  of presence. BigEarthNet's CORINE land-cover vocabulary does not carry to
+  RSVQA-LR's object-centric annotation, despite the same sensor family.
 
-The current BigEarthNet shard is single-date optical, so the change and
-cross-modal tools are unit tested but unmeasured on real pairs. CDVQA supplies
-genuine bi-temporal pairs and closes this at the same time as (1).
+### ~~2. Bi-temporal data~~ — done
+
+CDVQA supplied genuine bi-temporal pairs. Change VQA is measured at 64.3%
+routed, against 47.3% for the hand-written heuristic that remains in the system
+as the reference it has to beat.
 
 ### 3. Zero-shot land-cover below the majority baseline
 
