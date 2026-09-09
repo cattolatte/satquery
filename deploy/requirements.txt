@@ -1,0 +1,15 @@
+# Pinned to what the project is developed and measured against, so the Space
+# runs the same code path the benchmarks were produced on.
+torch==2.13.0
+transformers==5.16.1
+peft==0.20.0
+open_clip_torch==3.3.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart
+pillow==12.0.0
+numpy==2.3.5
+pandas==2.3.3
+rasterio==1.5.1
+huggingface_hub
+safetensors
