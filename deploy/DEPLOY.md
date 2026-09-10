@@ -103,13 +103,27 @@ It must be **public** for a judge to open it without logging in.
 ## Step 3 — Assemble the Space repository
 
 ```bash
+cd ~/Workspace/satquery
 git clone https://huggingface.co/spaces/<username>/satquery hf-satquery
-cd hf-satquery
+cd hf-satquery && pwd        # MUST print .../satquery/hf-satquery
+```
 
-cp -r ~/Workspace/satquery/satquery ./satquery      # the system itself
-cp ~/Workspace/satquery/deploy/app.py            ./app.py
-cp ~/Workspace/satquery/deploy/requirements.txt  ./requirements.txt
-cp ~/Workspace/satquery/deploy/README-space.md   ./README.md
+**Check that `pwd` before continuing.** Run the next block from
+`~/Workspace/satquery` by mistake and `cp -r ... ./satquery` nests the package
+inside itself, overwrites the project README with the Space one, and the
+duplicate then rides along into the Space.
+
+```bash
+cp -r ../satquery ./satquery          # the system itself
+cp ../deploy/app.py           ./app.py
+cp ../deploy/requirements.txt ./requirements.txt
+cp ../deploy/README-space.md  ./README.md
+```
+
+Verify before committing — 31 files, and no `satquery/satquery`:
+
+```bash
+git add -A && git ls-files | wc -l && git ls-files | grep -c satquery/satquery
 ```
 
 **`README.md` must be the one from `deploy/`.** Its YAML front matter declares
@@ -133,10 +147,16 @@ Name   WEIGHTS_REPO
 Value  <username>/satquery-weights
 ```
 
-A **variable**, not a secret — it is not sensitive.
+This is on **huggingface.co**, in the Space's own Settings tab — GitHub is not
+involved in this deployment at all.
 
-If it is unset the Space still runs, unadapted, and **caps its own confidence**,
-which is the designed behaviour rather than a silent downgrade.
+A **variable**, not a secret — it is not sensitive. Leave `satquery-weights`
+**public**, so the Space needs no token to read it.
+
+`app.py` reads this at startup and pulls `rs_clip/` and `rs_vlm/` into
+`checkpoints/`. If it is unset the Space still runs, unadapted, and **caps its
+own confidence** — and says so in a banner above the interface, rather than
+degrading silently.
 
 ---
 
@@ -147,6 +167,10 @@ git add -A
 git commit -m "Deploy SatQuery AI"
 git push
 ```
+
+`git push` asks for a username and a password. The password is **not** your
+account password — Hugging Face disabled those. Paste a **WRITE token** from
+huggingface.co/settings/tokens; it does not echo.
 
 Build takes roughly **10–20 minutes**; installing PyTorch is most of it. Watch
 **Logs → Build**.
