@@ -1,5 +1,12 @@
 # Pinned to what the project is developed and measured against, so the Space
 # runs the same code path the benchmarks were produced on.
+#
+# Two exceptions, forced by the platform: Spaces run Python 3.10, while this
+# project is developed on 3.13, and the dev pins for numpy (>=3.11) and
+# rasterio (>=3.12) simply do not install there. Both are dropped to the
+# newest 3.10-compatible release. Neither affects the model: numpy is used for
+# array plumbing and rasterio for GeoTIFF reading, not for anything the
+# measured numbers depend on.
 torch==2.13.0
 transformers==5.16.1
 peft==0.20.0
@@ -8,8 +15,8 @@ gradio
 # Only present on Hugging Face; the app degrades gracefully without it.
 spaces
 pillow==12.0.0
-numpy==2.3.5
+numpy==2.2.6          # 2.3.5 on dev; 2.3+ requires Python 3.11
 pandas==2.3.3
-rasterio==1.5.1
+rasterio==1.4.3       # 1.5.1 on dev; 1.5+ requires Python 3.12
 huggingface_hub
 safetensors
