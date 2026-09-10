@@ -27,16 +27,30 @@ except Exception:                                    # local, or CPU Space
         return fn
 
 MAX_IMAGES = 2                                       # the documented maximum
+
+# Built at module level, not lazily.
+#
+# ZeroGPU runs a CUDA emulation mode outside @spaces.GPU functions specifically
+# so that models can be placed on cuda during startup; loading them inside the
+# decorated function instead is documented as significantly less efficient,
+# because the real CUDA transfer then happens on every call rather than once.
+# The FastAPI server loads lazily for a different reason -- keeping --reload
+# usable -- which does not apply here.
+#
+# A failure is held rather than raised so the Space still boots and can say what
+# went wrong, instead of showing only a stack trace in the build log.
 _controller = None
+_load_error = None
+try:
+    from satquery.registry import build_controller
+    _controller = build_controller()
+except Exception as exc:                             # noqa: BLE001
+    _load_error = exc
 
 
 def controller():
-    """Built lazily so the Space boots instantly and the first query pays the
-    model load, matching the server's behaviour."""
-    global _controller
     if _controller is None:
-        from satquery.registry import build_controller
-        _controller = build_controller()
+        raise RuntimeError(f"models failed to load: {_load_error}")
     return _controller
 
 

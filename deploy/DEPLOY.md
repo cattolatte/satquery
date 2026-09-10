@@ -29,10 +29,19 @@ path the benchmarks were measured on.
 | Quota | unlimited | **5 min GPU/day** on a free account |
 | Eligibility | anyone | account **> 30 days old**, verified email, max 2 |
 
-**Pick ZeroGPU if your account is older than 30 days.** `app.py` already carries
-the `@spaces.GPU` decorator and no-ops it when the `spaces` module is absent, so
-the same file works on either. If the account is too new, ZeroGPU will not be
-selectable — use CPU Basic and expect several seconds per query.
+**Pick ZeroGPU.** At Space creation CPU Basic is greyed out and ZeroGPU is the
+selectable free option; hardware can be changed later in **Settings** either way.
+`app.py` carries the `@spaces.GPU` decorator and no-ops it when the `spaces`
+module is absent, so the same file runs on ZeroGPU, on CPU, and locally.
+
+Two ZeroGPU constraints this repository already satisfies:
+
+- **Supported PyTorch.** `torch==2.13.0` is on ZeroGPU's supported list.
+- **Models load at startup, not lazily.** ZeroGPU runs a CUDA emulation mode
+  outside `@spaces.GPU` functions precisely so models can be placed on `cuda`
+  during startup. `app.py` builds the controller at module level for that
+  reason; loading inside the decorated function would pay a real CUDA transfer
+  on every call.
 
 ---
 
