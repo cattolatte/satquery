@@ -4,20 +4,35 @@ Start to end. Produces a public URL of the form
 `https://huggingface.co/spaces/<username>/satquery` that anyone can open, which
 is what the SIH portal wants.
 
-**Free tier: CPU Basic — 2 vCPU, 16 GB RAM, no time limit, no card.**
-
 ---
 
-## Why CPU Basic and not the free GPU
+## Read this first: Docker Spaces is now paid
 
-ZeroGPU is genuinely free (48 GB VRAM) but is **Gradio-only**, and this app is
-FastAPI serving its own interface. Using it would mean rewriting the front end
-for a demo, and a free account gets 5 minutes of GPU per day.
+The Space creation page shows **Docker** with a padlock and a *Paid* badge. Only
+**Static** and **Gradio** are on the free tier, so a Python app must be Gradio.
 
-CPU Basic runs the existing app unchanged. The trade is speed: **several seconds
-per query instead of sub-second.** That is acceptable for someone clicking
-through a handful of examples, and it does not change any benchmark number —
-those were measured on GPU and are reported as such.
+That turns out to be the better path anyway, because **ZeroGPU is Gradio-only**
+— so the same file that runs free on CPU can also run free on a GPU.
+
+`deploy/app.py` is that Gradio front end. It is an interface layer over the
+existing `Controller.run(query, image_paths)`: routing, tool selection, fusion,
+confidence and the trace are untouched, so the Space demonstrates the same code
+path the benchmarks were measured on.
+
+## Which hardware to pick
+
+| | CPU Basic | ZeroGPU |
+|---|---|---|
+| Cost | free | free |
+| Specs | 2 vCPU, 16 GB RAM | RTX Pro 6000 Blackwell, 48 GB VRAM |
+| Speed | several seconds per query | fast |
+| Quota | unlimited | **5 min GPU/day** on a free account |
+| Eligibility | anyone | account **> 30 days old**, verified email, max 2 |
+
+**Pick ZeroGPU if your account is older than 30 days.** `app.py` already carries
+the `@spaces.GPU` decorator and no-ops it when the `spaces` module is absent, so
+the same file works on either. If the account is too new, ZeroGPU will not be
+selectable — use CPU Basic and expect several seconds per query.
 
 ---
 
@@ -27,26 +42,25 @@ Not the whole repository, and not 2.9 GB of checkpoints.
 
 | Part | Size | How it arrives |
 |---|---|---|
-| `checkpoints/rs_clip` | 581 MB | pulled from the Hub at build time |
-| `checkpoints/rs_vlm` | 19 MB | pulled from the Hub at build time |
+| `checkpoints/rs_clip` | 581 MB | pulled from a model repo at startup |
+| `checkpoints/rs_vlm` | 19 MB | pulled from a model repo at startup |
 | detector base (`owlv2-base-patch16-ensemble`) | ~600 MB | downloaded by `transformers` on first load |
 | generative base | — | downloaded on first load |
-| application code + `web/` | small | pushed with the Space |
+| `satquery/` + `app.py` | small | pushed with the Space |
 
-The other eight checkpoint directories are experiment variants — `rs_clip_openai`,
-`rs_vlm_v1_random` and so on. They are used by the ablations and are **not**
-needed to serve.
+The other eight checkpoint directories — `rs_clip_openai`, `rs_vlm_v1_random`
+and the rest — are ablation artefacts and are **not** needed to serve.
 
 ---
 
-## Step 1 — Upload the two serving adapters to a model repo
+## Step 1 — Upload the two serving adapters
 
-Do this once. It keeps 600 MB out of the Space's git history and makes the
-build a Hub-to-Hub fetch rather than an upload from your laptop.
+Once. Keeps 600 MB out of the Space's git history and makes startup a
+Hub-to-Hub fetch rather than an upload from your laptop.
 
 ```bash
 pip install -U "huggingface_hub[cli]"
-hf auth login          # paste a WRITE token from huggingface.co/settings/tokens
+hf auth login          # a WRITE token from huggingface.co/settings/tokens
 ```
 
 ```bash
@@ -56,70 +70,64 @@ hf upload satquery-weights checkpoints/rs_clip  rs_clip  --repo-type model
 hf upload satquery-weights checkpoints/rs_vlm   rs_vlm   --repo-type model
 ```
 
-The first upload is ~581 MB and is the slow part. Do it on good wifi.
+The first upload is ~581 MB and is the slow part. Start it and do something
+else.
 
 ---
 
 ## Step 2 — Create the Space
 
-On huggingface.co: **New → Space**.
+**New → Space** on huggingface.co.
 
 | Field | Value |
 |---|---|
 | Space name | `satquery` |
 | License | MIT |
-| SDK | **Docker** (blank template) |
-| Hardware | **CPU basic — free** |
+| SDK | **Gradio** → template **Blank** |
+| Hardware | **ZeroGPU** if offered, else **CPU basic** |
 | Visibility | **Public** |
 
-It must be **public** for the URL to be openable by judges without a login.
+It must be **public** for a judge to open it without logging in.
 
 ---
 
 ## Step 3 — Assemble the Space repository
 
-The Space is its own git repo. Copy in the application, not the checkpoints.
-
 ```bash
 git clone https://huggingface.co/spaces/<username>/satquery hf-satquery
 cd hf-satquery
 
-# application code and the interface it serves
-cp -r ~/Workspace/satquery/satquery ./satquery
-cp -r ~/Workspace/satquery/web      ./web
-
-# deployment files
-cp ~/Workspace/satquery/deploy/Dockerfile        ./Dockerfile
+cp -r ~/Workspace/satquery/satquery ./satquery      # the system itself
+cp ~/Workspace/satquery/deploy/app.py            ./app.py
 cp ~/Workspace/satquery/deploy/requirements.txt  ./requirements.txt
 cp ~/Workspace/satquery/deploy/README-space.md   ./README.md
 ```
 
-**`README.md` must be the one from `deploy/`** — its YAML front matter is what
-tells Spaces to use Docker and port 7860. Without it the Space will not build.
+**`README.md` must be the one from `deploy/`.** Its YAML front matter declares
+`sdk: gradio` and `app_file: app.py`. Without it the Space fails to build with
+a confusing *"No application file"* error.
 
-Keep the checkpoints out:
+Keep the bulk out:
 
 ```bash
-printf 'checkpoints/\ndata/\neval/\ntests/\n__pycache__/\n*.pyc\n' > .gitignore
+printf 'checkpoints/\ndata/\neval/\ntests/\nweb/\n__pycache__/\n*.pyc\n' > .gitignore
 ```
 
 ---
 
-## Step 4 — Point the build at the weights
+## Step 4 — Point it at the weights
 
-In the Space: **Settings → Variables and secrets → New variable**
+**Settings → Variables and secrets → New variable**
 
 ```
 Name   WEIGHTS_REPO
 Value  <username>/satquery-weights
 ```
 
-A **variable**, not a secret — it is not sensitive and the Dockerfile needs it
-at build time.
+A **variable**, not a secret — it is not sensitive.
 
-If you skip this the Space still builds and runs, but unadapted — and it will
-cap its own confidence, which is the designed behaviour rather than a silent
-downgrade.
+If it is unset the Space still runs, unadapted, and **caps its own confidence**,
+which is the designed behaviour rather than a silent downgrade.
 
 ---
 
@@ -131,41 +139,42 @@ git commit -m "Deploy SatQuery AI"
 git push
 ```
 
-The build takes roughly 10–20 minutes: installing PyTorch is most of it.
-Watch **Logs → Build** in the Space.
+Build takes roughly **10–20 minutes**; installing PyTorch is most of it. Watch
+**Logs → Build**.
 
 ---
 
-## Step 6 — Verify before you submit the URL
+## Step 6 — Verify before submitting the URL
 
 - [ ] Space shows **Running** (green)
-- [ ] The page loads and the interface renders
-- [ ] `GET /api/health` reports the BigEarthNet fine-tune, not stock CLIP
-- [ ] One real query returns an answer with evidence and a trace
-- [ ] Opened in a private window — confirms it works without your login
+- [ ] The interface renders and the example queries populate the box
+- [ ] One real query returns an answer **with evidence and a trace**
+- [ ] Confidence is not pinned near zero — if it is, `WEIGHTS_REPO` is wrong
+- [ ] Opened in a **private window** — proves it works without your login
 
 **Warm it before a demo.** Free Spaces sleep after ~48 hours idle and take a
-minute or so to wake. The very first query is slower again while
-`transformers` downloads the detector base.
+minute to wake, and the first query is slower again while `transformers`
+downloads the detector base.
 
 ---
 
-## If the build fails
+## If it fails
 
 | Symptom | Cause |
 |---|---|
-| `No application file` | `README.md` is missing its YAML front matter, or `sdk` is not `docker` |
-| Build times out | PyTorch download; retry — the layer cache survives |
-| `Permission denied` writing cache | `HF_HOME` not writable; the Dockerfile sets it under `/home/user` |
-| Health reports stock CLIP | `WEIGHTS_REPO` unset or misspelled |
-| Port error | Spaces requires 7860; `app_port` in the front matter must match the `CMD` |
-| Killed during load | 16 GB exceeded — check no experiment checkpoints were copied in |
+| `No application file` | `README.md` missing its front matter, or `app_file` is not `app.py` |
+| `ModuleNotFoundError: satquery` | the `satquery/` package was not copied into the Space root |
+| Build times out | PyTorch download — retry; the layer cache survives |
+| Confidence always low | `WEIGHTS_REPO` unset or misspelled; the backbone is unadapted |
+| ZeroGPU not selectable | account under 30 days old, or email unverified |
+| `spaces` import error locally | expected — `app.py` no-ops the decorator off-Hub |
+| Killed during load | 16 GB exceeded; check no experiment checkpoints were copied in |
 
 ---
 
 ## The honest framing for the submission
 
-This is a **CPU demo of a system measured on GPU**. Say so. The benchmark
-numbers in the README were produced through the real serving path on
+On CPU this is a **CPU demo of a system measured on GPU**. Say so. The benchmark
+numbers in the Space README were produced through the real serving path on
 appropriate hardware; the Space exists so a reviewer can click through the
-interface and see the trace, not to reproduce the timings.
+interface and read the trace, not to reproduce timings.
