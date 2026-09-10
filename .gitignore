@@ -27,3 +27,6 @@ runs/
 # env
 .env
 .env.*
+
+# Local clone of the Hugging Face Space
+hf-satquery/

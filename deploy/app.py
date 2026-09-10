@@ -28,6 +28,49 @@ except Exception:                                    # local, or CPU Space
 
 MAX_IMAGES = 2                                       # the documented maximum
 
+# The adapters are not in the Space's git history -- 600 MB of weights do not
+# belong there -- so they are fetched Hub-to-Hub at startup instead.
+#
+# The destination is a *relative* path on purpose. The tools resolve
+# checkpoints/rs_clip and checkpoints/rs_vlm relative to the working directory,
+# so writing to the same relative root is what guarantees the download and the
+# lookup cannot disagree about where the weights are.
+WEIGHTS_REPO = os.environ.get("WEIGHTS_REPO", "").strip()
+CHECKPOINTS = Path("checkpoints")
+
+
+def _fetch_weights() -> str:
+    """Pull the serving adapters, and say plainly what the outcome was.
+
+    Running unadapted is a supported state -- confidence is capped and the
+    trace records it -- so a failure here degrades the answer rather than
+    stopping the Space. What it must never do is degrade *silently*: an
+    unadapted backbone looks like a modelling problem rather than a missing
+    environment variable, so the reason is surfaced in the interface.
+    """
+    if (CHECKPOINTS / "rs_clip" / "config.json").is_file():
+        return ""                                    # already present, local run
+    if not WEIGHTS_REPO:
+        return ("**WEIGHTS_REPO is not set.** Running unadapted, so confidence "
+                "is capped by design. Set it in Settings -> Variables and "
+                "secrets and restart.")
+    try:
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id=WEIGHTS_REPO,
+            repo_type="model",
+            local_dir=str(CHECKPOINTS),
+            allow_patterns=["rs_clip/*", "rs_vlm/*"],
+        )
+        return ""
+    except Exception as exc:                         # noqa: BLE001
+        return (f"**Could not fetch `{WEIGHTS_REPO}`** ({exc}). Running "
+                "unadapted, confidence capped. Check the name is exactly "
+                "`<username>/satquery-weights` and that the repo is public.")
+
+
+_weights_note = _fetch_weights()
+
 # Built at module level, not lazily.
 #
 # ZeroGPU runs a CUDA emulation mode outside @spaces.GPU functions specifically
@@ -148,6 +191,9 @@ Twelve of twelve VRSBench question types beat their own majority baseline.
 
 with gr.Blocks(title="SatQuery AI") as demo:
     gr.Markdown(DESCRIPTION)
+    # Shown only when something is actually wrong, so it stays meaningful.
+    if _weights_note or _load_error:
+        gr.Markdown("> " + (_weights_note or f"**Models failed to load:** {_load_error}"))
     with gr.Row():
         with gr.Column(scale=1):
             img_a = gr.File(label="Image 1  (GeoTIFF / TIFF / PNG / JPEG)",
